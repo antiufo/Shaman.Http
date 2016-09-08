@@ -31,24 +31,24 @@ namespace Shaman
 
 #if CORECLR
             IsCoreClr = true;
-            IsDnx = true;
+            // IsDnx = true;
 #endif
 
-            if (!IsDnx)
-            {
+            //if (!IsDnx)
+            //{
 
-                var locationProperty = typeof(Assembly).GetProperty("Location", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                var fxpath = Path.GetDirectoryName(
-                    (string)locationProperty.GetValue(typeof(int).GetTypeInfo().Assembly
-                #if NET35
-                , new object[]{}
-                #endif
-                ));
-                if (File.Exists(Path.Combine(fxpath, "dnx.exe")) || File.Exists(Path.Combine(fxpath, "dnx")))
-                {
-                    IsDnx = true;
-                }
-            }
+            //    var locationProperty = typeof(Assembly).GetProperty("Location", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            //    var fxpath = Path.GetDirectoryName(
+            //        (string)locationProperty.GetValue(typeof(int).GetTypeInfo().Assembly
+            //    #if NET35
+            //    , new object[]{}
+            //    #endif
+            //    ));
+            //    if (File.Exists(Path.Combine(fxpath, "dnx.exe")) || File.Exists(Path.Combine(fxpath, "dnx")))
+            //    {
+            //        IsDnx = true;
+            //    }
+            //}
             
             var s = new List<string>();
             if (IsOSX) s.Add("osx");
@@ -60,7 +60,7 @@ namespace Shaman
             if (IsMono) s.Add("mono");
             if (IsCoreClr) s.Add("coreclr");
 
-            if (IsDnx) s.Add("dnx");
+            //if (IsDnx) s.Add("dnx");
 
             PlatformDescriptor = string.Join(", ",
              s
@@ -81,7 +81,7 @@ namespace Shaman
         public readonly static bool IsOSX;
         public readonly static string PlatformDescriptor;
 
-        public readonly static bool IsDnx;
+        // public readonly static bool IsDnx;
 
 #if DEBUG
         public readonly static bool IsDebug = true;

@@ -198,8 +198,8 @@ ExtensionMethods
 
 #if !SALTARELLE
 
-        private static string DefaultAccept = "text/html,application/xhtml+xml,*/*";
-        private static string DefaultAcceptLanguage = "en-US";
+        private readonly static string DefaultAccept = "text/html, application/xhtml+xml, */*";
+        private readonly static string DefaultAcceptLanguage = "en-US,en;q=0.5";
 
 
 #endif

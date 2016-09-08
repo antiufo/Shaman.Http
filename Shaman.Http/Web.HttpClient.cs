@@ -272,11 +272,11 @@ ExtensionMethods
                 }
                 else if (options.PostString != null && redirectionIndex == 0)
                 {
-                    requestContent = new StringContent(options.PostString, null, "application/x-www-form-urlencoded");
+                    requestContent = new StringContent(options.PostString, null, null);
                 }
                 else if (message.Method == HttpMethod.Post || message.Method == HttpMethod.Put)
                 {
-                    requestContent = new StringContent(string.Empty, null, "application/x-www-form-urlencoded");
+                    requestContent = new StringContent(string.Empty, null, null);
                 }
 
 

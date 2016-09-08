@@ -38,6 +38,7 @@ namespace Shaman.Types
     {
 
 #if !STANDALONE
+        [StaticFieldCategory(StaticFieldCategory.Cache)]
         internal readonly static WeakDictionary<string, WebFile> files = new WeakDictionary<string, WebFile>();
 
 
@@ -130,7 +131,7 @@ namespace Shaman.Types
                 if (continueDownload && (manager == null || !manager.IsAlive))
                 {
                     this.partialDownload = partialDownload;
-                    manager = new MediaStreamManager(GetResponseAsyncInternal, true);
+                    manager = new MediaStreamManager(GetResponseAsync, true);
                 }
                 else
                 {
@@ -270,12 +271,12 @@ namespace Shaman.Types
             lock (this)
             {
                 if (manager == null)
-                    manager = new MediaStreamManager(createStream ?? GetResponseAsyncInternal, true);
+                    manager = new MediaStreamManager(createStream ?? GetResponseAsync, true);
 
                 var stream = manager.TryCreateStream(this, 0, linger);
                 if (stream == null)
                 {
-                    manager = new MediaStreamManager(createStream ?? GetResponseAsyncInternal, true);
+                    manager = new MediaStreamManager(createStream ?? GetResponseAsync, true);
                     stream = manager.TryCreateStream(this, 0, linger);
                     Sanity.Assert(stream != null);
                 }
@@ -285,7 +286,8 @@ namespace Shaman.Types
 
         }
 
-        private async Task<HttpResponseMessage> GetResponseAsyncInternal(long startPosition)
+        [RestrictedAccess]
+        public async Task<HttpResponseMessage> GetResponseAsync(long startPosition)
         {
             if (partialDownload != null && startPosition == 0)
             {
@@ -411,6 +413,16 @@ namespace Shaman.Types
             return FromUrl(url, null, false);
         }
 
+#if !STANDALONE
+
+        public static WebFile FromUrlUntracked(Uri url)
+        {
+            return FromUrlUntracked(url, null, false);
+        }
+#endif
+
+
+
         public static WebFile FromUrl(Uri url, HttpResponseMessage partialResponse, bool continueDownload)
         {
 #if STANDALONE
@@ -430,6 +442,17 @@ namespace Shaman.Types
             return existing;
             
         }
+
+
+#if !STANDALONE
+        public static WebFile FromUrlUntracked(Uri url, HttpResponseMessage partialResponse, bool continueDownload)
+        {
+            var existing = new WebFile(url);
+            existing.SaveResponseInfo(partialResponse, continueDownload);
+            return existing;
+
+        }
+#endif
 
         protected static void Initialize(WebFile existing, WebFile typed, HttpResponseMessage partialResponse, bool continueDownload)
         {

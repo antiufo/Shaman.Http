@@ -40,7 +40,8 @@ namespace Shaman
                     nextQueryParameterToAdd = this.nextQueryParameterToAdd,
                     queryParameters = Clone(this.queryParameters),
                     unparsedUrl = this.unparsedUrl,
-                    url = this.url
+                    url = this.url,
+                    parsedUnparsedOutOfSync = this.parsedUnparsedOutOfSync,
                 };
             }
         }
@@ -72,7 +73,7 @@ namespace Shaman
         {
             get
             {
-                if (queryParameters != null && queryParameters.Count != nextQueryParameterToAdd) return Url;
+                if (parsedUnparsedOutOfSync || (queryParameters != null && queryParameters.Count != nextQueryParameterToAdd)) return Url;
                 return url;
             }
         }
@@ -84,10 +85,15 @@ namespace Shaman
                 lock (this)
                 {
                     var s = GetUrlStringIfNew();
-                    if (s != null) url = s.AsUri();
+                    if (s != null)
+                    {
+                        url = s.AsUri();
+                        parsedUnparsedOutOfSync = false;
+                    }
                     else if (unparsedUrl != null)
                     {
                         url = unparsedUrl.AsUri();
+                        parsedUnparsedOutOfSync = false;
                         unparsedUrl = null;
                     }
                     return url;
@@ -105,6 +111,7 @@ namespace Shaman
                     var s = GetUrlStringIfNew();
                     if (s != null)
                     {
+                        parsedUnparsedOutOfSync = true;
                         unparsedUrl = s;
                         return s;
                     }
@@ -113,7 +120,7 @@ namespace Shaman
 
             }
         }
-
+        private bool parsedUnparsedOutOfSync;
         internal string GetUrlStringIfNew()
         {
             NakedStringBuilder sb = null;
@@ -184,6 +191,11 @@ namespace Shaman
         internal const double Configuration_ParameterEscapingLengthEstimationRatio = 1.2;
         [Configuration]
         private const double Configuration_ParameterEscapingLengthEstimationAddition = 3;
+        public string AbsolutePath => PathConsistentUrl.AbsolutePath;
+
+        public bool IsDefaultPort => PathConsistentUrl.IsDefaultPort;
+
+        public string DnsSafeHost => PathConsistentUrl.DnsSafeHost;
 
         public void AppendQueryParameter(string name, string value)
         {

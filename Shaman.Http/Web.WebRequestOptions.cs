@@ -3,9 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-#if !NETFX_CORE && !WINDOWS_PHONE && !CORECLR
-using System.Web;
-#endif
 using System.Reflection;
 using System.Text;
 using System.Net;
@@ -143,7 +140,8 @@ namespace Xamasoft
                 this.Timeout = 20000;
                 this.TimeoutSecondRetrialAfterError = 8000;
                 this.TimeoutStartSecondRetrial = 5000;
-                this.UserAgent = "Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; rv:11.0) like Gecko";
+                //this.UserAgent = "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:47.0) Gecko/20100101 Firefox/47.0";
+                this.UserAgent = "Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko";
             }
             else
             {
@@ -160,7 +158,7 @@ namespace Xamasoft
 
         }
 
-
+        [StaticFieldCategory(StaticFieldCategory.Stable)]
         private static WebRequestOptions defaultOptions = new WebRequestOptions(true);
         public static WebRequestOptions DefaultOptions
         {

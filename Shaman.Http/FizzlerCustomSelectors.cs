@@ -42,36 +42,43 @@ namespace Shaman.Runtime
 
 #if !SALTARELLE
         [ThreadStatic]
+        [StaticFieldCategory(StaticFieldCategory.TrimmedCache)]
 #endif
         internal static HtmlNode lastTextSplitNode;
 #if !SALTARELLE
         [ThreadStatic]
+        [StaticFieldCategory(StaticFieldCategory.TrimmedCache)]
 #endif
         internal static IEnumerable<HtmlNode> lastTextSplitResult;
 #if !SALTARELLE
         [ThreadStatic]
+        [StaticFieldCategory(StaticFieldCategory.TrimmedCache)]
 #endif
         internal static string lastTextSplitSeparator;
 
 
 #if !SALTARELLE
         [ThreadStatic]
+        [StaticFieldCategory(StaticFieldCategory.TrimmedCache)]
 #endif
         internal static HtmlNode lastConvertedJsonHtml;
 
 #if !SALTARELLE
         [ThreadStatic]
+        [StaticFieldCategory(StaticFieldCategory.TrimmedCache)]
 #endif
         internal static string lastConvertedJsonString;
 
 
 #if !SALTARELLE
         [ThreadStatic]
+        [StaticFieldCategory(StaticFieldCategory.TrimmedCache)]
 #endif
         internal static HtmlDocument lastConvertedJsonParentDocument;
 
 #if !SALTARELLE
         [ThreadStatic]
+        [StaticFieldCategory(StaticFieldCategory.TrimmedCache)]
 #endif
         private static int lastConvertedJsonIndex;
 
@@ -113,10 +120,10 @@ namespace Shaman.Runtime
             var doc = new HtmlDocument();
             if (parentDocument != null)
             {
-                var page = parentDocument.GetPageUrl();
+                var page = parentDocument.PageUrl;
                 if (page != null) doc.SetPageUrl(page);
                 var date = parentDocument.DocumentNode.GetAttributeValue("date-retrieved");
-                if (date != null) parentDocument.DocumentNode.SetAttributeValue("date-retrieved", date);
+                if (date != null) doc.DocumentNode.SetAttributeValue("date-retrieved", date);
             }
             return doc;
         }
@@ -337,7 +344,7 @@ namespace Shaman.Runtime
             return lastConvertedJsonHtml;
         }
 
-        private static HtmlNode WrapText(HtmlNode source, string text)
+        internal static HtmlNode WrapText(HtmlNode source, string text)
         {
             if (string.IsNullOrEmpty(text)) return null;
             var doc = CreateDocument(source.OwnerDocument);
@@ -368,9 +375,9 @@ namespace Shaman.Runtime
                 {
                     return nodes.Select(x =>
                     {
-                        if (x.GetAttributeValue("property") == property || x.GetAttributeValue("itemprop") == property)
+                        if ((x.TagName == "meta" && x.GetAttributeValue("name") == property) || x.GetAttributeValue("property") == property || x.GetAttributeValue("itemprop") == property)
                         {
-                            var val = x.GetAttributeValue("itemprop") ?? x.GetAttributeValue("content") ?? x.TryGetValue();
+                            var val = x.GetAttributeValue("value") ?? x.GetAttributeValue("content") ?? (x.GetAttributeValue("src") != null || x.GetAttributeValue("href") != null ? x.TryGetLinkUrl()?.AbsoluteUri : null) ?? x.TryGetValue();
                             return WrapText(x, val);
                         }
                         return null;
@@ -386,7 +393,7 @@ namespace Shaman.Runtime
                     if (n == null) return Enumerable.Empty<HtmlNode>();
                     var u = n.TryGetValue();
                     if (u == null) return Enumerable.Empty<HtmlNode>();
-                    model = HttpUtils.GetAbsoluteUriAsString(n.OwnerDocument.GetPageUrl(), model);
+                    model = HttpUtils.GetAbsoluteUriAsString(n.OwnerDocument.PageUrl, model);
                     return new[] { WrapText(n, model.Replace("@", HttpUtils.EscapeDataString(u))) };
                 };
             });
@@ -868,7 +875,7 @@ namespace Shaman.Runtime
 
                         if (link == null || (link.Scheme != HttpUtils.UriSchemeHttp && link.Scheme != HttpUtils.UriSchemeHttps)) return false;
 
-                        var host = x.OwnerDocument.GetPageUrl().Host;
+                        var host = x.OwnerDocument.PageUrl.Host;
 
                         if (!link.IsHostedOn(host)) return false;
 #if SALTARELLE
@@ -948,7 +955,7 @@ namespace Shaman.Runtime
 
                         if (!link.AbsolutePath.StartsWith(path)) return false;
 
-                        var host = x.OwnerDocument.GetPageUrl().Host;
+                        var host = x.OwnerDocument.PageUrl.Host;
                         if (!link.IsHostedOn(host)) return false;
                         return true;
                     });
@@ -1005,7 +1012,7 @@ namespace Shaman.Runtime
                         }
 
                         if (link == null || (link.Scheme != HttpUtils.UriSchemeHttp && link.Scheme != HttpUtils.UriSchemeHttps)) return false;
-                        var host = x.OwnerDocument.GetPageUrl().Host;
+                        var host = x.OwnerDocument.PageUrl.Host;
                         if (!link.IsHostedOn(host)) return false;
                         return true;
 
@@ -1439,8 +1446,8 @@ namespace Shaman.Runtime
 
             });
 
-
         }
+        
 
         private static bool IsNullOrWhiteSpace(string str)
         {

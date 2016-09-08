@@ -40,7 +40,7 @@ namespace Xamasoft
 
         internal static string CleanupJsonp(string str)
         {
-            if (str.IndexOf('\0', 0, 40) != -1) return str;
+            if (str.IndexOf('\0', 0, Math.Min(str.Length, 40)) != -1) return str;
             string result;
 
             result = TryCleanupJsonBlockingCode(str, "for(", "for ", ");");

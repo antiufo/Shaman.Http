@@ -29,6 +29,7 @@ using System.Threading.Tasks;
 using HttpUtils = Shaman.Utils;
 using HttpExtensionMethods = Shaman.ExtensionMethods;
 #endif
+using System.Text.RegularExpressions;
 #if NET35
 using HttpResponseMessage = System.Net.HttpWebResponse;
 using HttpRequestMessage = System.Net.HttpWebRequest;
@@ -142,32 +143,36 @@ namespace Shaman
                             }
 
                             if (info.Response != null)
+                            {
                                 info.Response.Dispose();
 
 #if NET35
-                            var vv = info.Response.Headers["Location"];
-                            redirectLocation = vv != null ? HttpUtils.GetAbsoluteUri(url.PathConsistentUrl, vv) : null;
+                                var vv = info.Response.Headers["Location"];
+                                redirectLocation = vv != null ? HttpUtils.GetAbsoluteUri(url.PathConsistentUrl, vv) : null;
 #else
-                            redirectLocation = info.Response.Headers.Location;
+                                redirectLocation = info.Response.Headers.Location;
 #endif
+
+                                if (redirectLocation.IsAbsoluteUri && redirectLocation.Scheme == HttpUtils.UriSchemeFile)
+                                {
+                                    if (!redirectLocation.OriginalString.StartsWith("/")) throw new ArgumentException("Redirect URL must either be absolute, or start with '/'.");
+                                    redirectLocation = new Uri(url.Scheme + "://" + url.Authority + redirectLocation.OriginalString);
+                                }
+                                else if (!redirectLocation.IsAbsoluteUri)
+                                {
+                                    redirectLocation = new Uri((url.Scheme + "://" + url.Authority).AsUri(), redirectLocation);
+                                }
+
+
+                                if (cacheData != null)
+                                {
+                                    cacheData.RedirectUrl = redirectLocation != null ? new LazyUri(redirectLocation) : null;
+                                    cacheData.ErrorCode = (int)info.Response.StatusCode;
+                                }
+                                if (!noredir && redirectLocation == null) throw new Exception("Redirect without Location header was received.");
+                            }
                             
-                            if (redirectLocation.IsAbsoluteUri && redirectLocation.Scheme == HttpUtils.UriSchemeFile)
-                            {
-                                if (!redirectLocation.OriginalString.StartsWith("/")) throw new ArgumentException("Redirect URL must either be absolute, or start with '/'.");
-                                redirectLocation = new Uri(url.Scheme + "://" + url.Authority + redirectLocation.OriginalString);
-                            }
-                            else if (!redirectLocation.IsAbsoluteUri)
-                            {
-                                redirectLocation = new Uri((url.Scheme + "://" + url.Authority).AsUri(), redirectLocation);
-                            }
-
-
-                            if (cacheData != null)
-                            {
-                                cacheData.RedirectUrl = redirectLocation;
-                                cacheData.ErrorCode = (int)info.Response.StatusCode;
-                            }
-                            if (!noredir && redirectLocation == null) throw new Exception("Redirect without Location header was received.");
+                            
                         }
                     }).WithTimeout(TimeSpan.FromMilliseconds(options.Timeout));
                 }
@@ -204,6 +209,7 @@ namespace Shaman
                         }
                     }
                     var html = await ParseHtmlAsync(info, noredir ? null : redirectLocation, cacheData, options, metaParameters, url);
+                    if (cacheData != null) cacheData.PageUrl = html?.OwnerDocument.PageUrl != null ? new LazyUri(html.OwnerDocument.PageUrl) : null;
                     return new GetHtmlOrJsonAsyncResponse()
                     {
                         CacheData = cacheData,
@@ -237,20 +243,22 @@ namespace Shaman
         }
 
 
-        public static string GetCookieValue(this
-#if NATIVE_HTTP
-            System.Net.CookieCollection cookies,
-#else
-            System.Net.Reimpl.CookieCollection cookies,
-#endif
-            string name)
+        public static string GetCookieValue(this System.Net.CookieCollection cookies, string name)
         {
             var c = cookies[name];
             if (c == null) return null;
             return !string.IsNullOrEmpty(c.Value) ? c.Value : null;
         }
+#if !NATIVE_HTTP
+        public static string GetCookieValue(this System.Net.Reimpl.CookieCollection cookies, string name)
+        {
+            var c = cookies[name];
+            if (c == null) return null;
+            return !string.IsNullOrEmpty(c.Value) ? c.Value : null;
+        }
+#endif
 
-             internal static void AppendUriEncoded(this NakedStringBuilder sb, string text)
+        internal static void AppendUriEncoded(this NakedStringBuilder sb, string text)
         {
 #if DESKTOP
             sb.Data = DirectUriEscapeChar.EscapeString(text, 0, text.Length, sb.Data, ref sb.Length, false, DirectUriEscapeChar.c_DummyChar, DirectUriEscapeChar.c_DummyChar, DirectUriEscapeChar.c_DummyChar);
@@ -596,7 +604,7 @@ namespace Shaman
 #else
          IReadOnlyDictionary<string, string> metaParameters,
 #endif
-          bool hasExtraOptions, Credentials credentialsForVary)
+          bool hasExtraOptions, Credentials credentialsForVary, Action<HtmlNode> additionalChecks)
         {
             var cachePath = Caching.GetWebCachePath(HttpUtils.GetVaryUrl(lazyurl, metaParameters, credentialsForVary), hasExtraOptions, true);
             var originalLazy = lazyurl;
@@ -656,11 +664,13 @@ namespace Shaman
                         if (preprocessedOptions != null) preprocessedOptions.PageExecutionResults = r;
                         node = r.GetHtmlNode();
                         EnsurePageConstraints(node, metaParameters);
+                        additionalChecks?.Invoke(node);
                         if (cachePath != null)
                         {
                             Caching.SaveCache(cachePath, new WebCache()
                             {
                                 Url = lazyurl,
+                                PageUrl = node.OwnerDocument.PageUrl != null ? new LazyUri(node.OwnerDocument.PageUrl) : null,
                                 Result = node.OwnerDocument.WriteTo(),
                                 JsExecutionResults = JsonConvert.SerializeObject(r, Formatting.None)
                             });
@@ -739,9 +749,13 @@ namespace Shaman
 
 
                                 var parameters = metaParameters.Where(x => x.Key.StartsWith("$form-")).Select(x => new KeyValuePair<string, string>(x.Key.Substring(6), x.Value)).ToList();
-                                lazyurl = HttpUtils.SetUpOptionsFromFormButton(button, preprocessedOptions, parameters);
+                                var tuple = HttpUtils.SetUpOptionsFromFormButton(button, preprocessedOptions, parameters);
+                                lazyurl = tuple.Url;
+                                // TODO tuple.Item2 is ignored
                                 var preserve = metaParameters.Where(x => x.Key == "$forbid-selector" || x.Key == "$assert-selector" || x.Key == "$error-selector" || x.Key == "$error-status-selector").ToList();
                                 metaParameters = ProcessMetaParameters(lazyurl, preprocessedOptions);
+                                //Console.WriteLine(lazyurl);
+                                
                                 if (preserve.Any())
                                 {
                                     var m = metaParameters.ToDictionary(x => x.Key, x => x.Value);
@@ -757,6 +771,7 @@ namespace Shaman
                         }
 
                         EnsurePageConstraints(page, metaParameters);
+                        additionalChecks?.Invoke(page);
                         MaybeKeepReturnedPage(lazyurl, page);
                     }
 
@@ -764,7 +779,8 @@ namespace Shaman
                     {
                         //var html = page.ChildNodes.FirstOrDefault(x => x.Name == "html");
                         //var head = (html ?? page).ChildNodes.FirstOrDefault(x => x.Name == "head");
-                        var metaRedirect = page.Descendants().FirstOrDefault(x => x.TagName == "meta" && string.Equals(x.GetAttributeValue("http-equiv"), "refresh", StringComparison.OrdinalIgnoreCase));
+                        var follownoscript = metaParameters.TryGetValue("follownoscript") == "1";
+                        var metaRedirect = page.Descendants().FirstOrDefault(x => x.TagName == "meta" && string.Equals(x.GetAttributeValue("http-equiv"), "refresh", StringComparison.OrdinalIgnoreCase) && (follownoscript || !x.Ancestors().Any(y => y.TagName == "noscript")));
                         if (metaRedirect != null)
                         {
                             var value = metaRedirect.GetAttributeValue("content");
@@ -843,20 +859,22 @@ namespace Shaman
 #else 
         IReadOnlyDictionary<string, string> metaParameters,
 #endif
-        bool hasExtraOptions, Credentials credentialsForVary)
+        bool hasExtraOptions, 
+        Credentials credentialsForVary,
+        Action<HtmlNode> additionalChecks
+        )
         {
 #if !STANDALONE
             using (var timing = Timing.Create(Timing.TimingCategory.Http, url))
 #endif
             {
 
-
                 var t = 10;
                 while (true)
                 {
                     try
                     {
-                        var p = await GetHtmlNodeAsyncImpl2(url, preprocessedOptions, metaParameters, hasExtraOptions, credentialsForVary);
+                        var p = await GetHtmlNodeAsyncImpl2(url, preprocessedOptions, metaParameters, hasExtraOptions, credentialsForVary, additionalChecks);
                         foreach (var cookie in preprocessedOptions.CookiesList)
                         {
                             p.OwnerDocument.DocumentNode.SetAttributeValue("cookie-" + cookie.Name, cookie.Value);
@@ -926,7 +944,7 @@ namespace Shaman
                 }
                 if (isolated.CacheVaryKey != null) url.AppendFragmentParameter("$varyisolatedcookies", isolated.CacheVaryKey);
                 else hasExtraOptions = true;
-                var page = await GetHtmlNodeAsyncImpl(url, options, metaParameters, hasExtraOptions, credentials);
+                var page = await GetHtmlNodeAsyncImpl(url, options, metaParameters, hasExtraOptions, credentials, null);
                 isolated._cookies = options.CookiesList.ToDictionary(x => x.Name, x => x.Value);
                 isolated.MaybeSave();
                 return page;
@@ -951,8 +969,7 @@ namespace Shaman
                 try
                 {
                     var oldcookies = options.CookiesList.ToDictionary(x => x.Name, x => x.Value);
-                    var page = await GetHtmlNodeAsyncImpl(url, options, metaParameters, hasExtraOptions, credentials);
-                    VerifyAuthentication(page, siteInfo, url, siteIdentifier);
+                    var page = await GetHtmlNodeAsyncImpl(url, options, metaParameters, hasExtraOptions, credentials, p => VerifyAuthentication(p, siteInfo, url, siteIdentifier));
 
 
                     credentials.LastCookies = Utils.ParametersToString(options.CookiesList.Select(x => new KeyValuePair<string, string>(x.Name, x.Value)));
@@ -975,7 +992,7 @@ namespace Shaman
                 {
                     var s = ex.GetResponseStatusCode();
                     Caching.SetDummyResponseWithUrl(ex, url, s);
-                    if (s != HttpStatusCode.Forbidden && s != HttpStatusCode.Unauthorized) throw;
+                    if (s != HttpStatusCode.Forbidden && s != HttpStatusCode.Unauthorized && s != (HttpStatusCode)0) throw;
                 }
                 catch (WebsiteAuthenticationException)
                 {
@@ -995,6 +1012,7 @@ namespace Shaman
 
                 foreach (var item in returnedCookies)
                 {
+                    options.CookiesList?.RemoveWhere(x => x.Name == item.Key);
                     options.AddCookie(item.Key, item.Value, PriorityCookie.PRIORITY_Login);
                 }
 
@@ -1022,10 +1040,14 @@ namespace Shaman
             {
                 try
                 {
-                    var page = await GetHtmlNodeAsyncImpl(url, options, metaParameters, hasExtraOptions, credentials);
-#if !STANDALONE
-                    VerifyAuthentication(page, siteInfo, url, siteIdentifier);
+                    var page = await GetHtmlNodeAsyncImpl(url, options, metaParameters, hasExtraOptions, credentials,
+#if STANDALONE
+ null
+
+#else
+ p => VerifyAuthentication(p, siteInfo, url, siteIdentifier)
 #endif
+                        );
                     return page;
                 }
                 catch (WebException ex)
@@ -1038,7 +1060,7 @@ namespace Shaman
                     if (s == HttpStatusCode.Forbidden || s == HttpStatusCode.Unauthorized)
                     {
                         var wea = new WebsiteAuthenticationException("The server returned: " + s);
-                        wea.RequestedUrl = url.Url;
+                        wea.RequestedUrl = url;
                         wea.SiteIdentifier = siteIdentifier;
                         wea.SiteInfo = siteInfo;
                         throw wea;
@@ -1072,6 +1094,27 @@ namespace Shaman
             if (length != -1)
             {
                 var forbiddenSizes = metaparameters.TryGetValue("$forbid-size");
+                CheckForbiddenSizeRanges(length, forbiddenSizes);
+            }
+            if (r.RespondingUrl != null)
+            {
+                var forbiddenRedirect = metaparameters.TryGetValue("$forbid-redirect-match");
+                if (forbiddenRedirect != null)
+                {
+                    if (Regex.IsMatch(r.RespondingUrl.AbsoluteUri, forbiddenRedirect))
+                    {
+                        throw new WebException("Unexpected responding URL."); 
+                    }
+                }
+            }
+            return r.Response;
+        }
+
+        public static void CheckForbiddenSizeRanges(long actualLength, string forbiddenSizes)
+        {
+            if (actualLength != -1)
+            {
+                
                 if (forbiddenSizes != null)
                 {
                     foreach (var item in forbiddenSizes.SplitFast(',', StringSplitOptions.RemoveEmptyEntries))
@@ -1079,20 +1122,18 @@ namespace Shaman
                         var interval = item.SplitFast('-', StringSplitOptions.None);
                         if (interval.Length == 1)
                         {
-                            if (length != long.Parse(interval[0])) continue;
+                            if (actualLength != long.Parse(interval[0])) continue;
                         }
                         else if (interval.Length == 2)
                         {
-                            if (interval[0].Length != 0 && length < long.Parse(interval[0])) continue;
-                            if (interval[1].Length != 0 && length > long.Parse(interval[1])) continue;
+                            if (interval[0].Length != 0 && actualLength < long.Parse(interval[0])) continue;
+                            if (interval[1].Length != 0 && actualLength > long.Parse(interval[1])) continue;
                         }
                         throw new WebException("Invalid file length.");
                     }
                 }
             }
-            return r.Response;
         }
-
 
         /// <summary>
         /// Gets the HTTP status code from a <see cref="WebException"/>.
@@ -1270,35 +1311,8 @@ namespace Shaman
 #endif
 
 
-        public static Uri GetPageUrl(this HtmlDocument document)
-        {
-            var u = document.DocumentNode.GetAttributeValue("document-url");
-            return u != null ? u.AsUri() : null;
-        }
 
-        public static Uri GetBaseUrl(this HtmlDocument document)
-        {
-            var b = document.DocumentNode.GetAttributeValue("base-url");
-            if (b == null)
-            {
-                var attrval = document.DocumentNode.TryGetValue("base[href]", "href");
-                if (attrval != null)
-                {
-                    try
-                    {
-                        b = HttpUtils.GetAbsoluteUrlInternal(document.GetPageUrl(), attrval).AbsoluteUri;
-                    }
-                    catch
-                    {
-                    }
-                }
-                if (b == null) b = string.Empty;
-                document.DocumentNode.SetAttributeValue("base-url", b);
-            }
-            if (b.Length == 0) return document.GetPageUrl();
-            return b.AsUri();
-        }
-
+       
 
         public static HtmlNode NextSibling(this HtmlNode node, string nodeName)
         {
@@ -1406,7 +1420,7 @@ namespace Shaman
                     if (name.StartsWith("data-") && !(str.StartsWith("http://") || str.StartsWith("https://") || str.StartsWith("/"))) continue;
                     try
                     {
-                        u = HttpUtils.GetAbsoluteUri(finalNode.OwnerDocument.GetBaseUrl(), str);
+                        u = HttpUtils.GetAbsoluteUri(finalNode.OwnerDocument.BaseUrl, str);
                         if (name != "src")
                         {
                             var path = u.AbsolutePath.ToLowerFast();
@@ -1487,7 +1501,7 @@ namespace Shaman
 
         public static void MakeAbsoluteUrls(this HtmlNode node)
         {
-            MakeAbsoluteUrlsInternal(node, node.OwnerDocument.GetBaseUrl());
+            MakeAbsoluteUrlsInternal(node, node.OwnerDocument.BaseUrl);
         }
 
 
@@ -1500,6 +1514,7 @@ namespace Shaman
                 HttpUtils.MakeAbsoluteAttribute(node, "href", baseUrl);
                 HttpUtils.MakeAbsoluteAttribute(node, "src", baseUrl);
                 HttpUtils.MakeAbsoluteAttribute(node, "action", baseUrl);
+                HttpUtils.MakeAbsoluteAttribute(node, "poster", baseUrl);
             }
             catch
             {
@@ -1519,7 +1534,7 @@ namespace Shaman
         public static Uri TryGetLinkUrl(this HtmlNode node)
         {
             if (node == null) throw new ArgumentNullException();
-            var baseUrl = node.OwnerDocument.GetBaseUrl();
+            var baseUrl = node.OwnerDocument.BaseUrl;
             var href = node.GetAttributeValue("href");
             if (href != null)
             {
@@ -1530,6 +1545,12 @@ namespace Shaman
             if (src != null)
             {
                 return HttpUtils.GetAbsoluteUrlInternal(baseUrl, src);
+            }
+            if (node.OwnerDocument.IsJson() || node.OwnerDocument.IsXml())
+            {
+                var t = node.GetText();
+                if (t == null) return null;
+                return HttpUtils.GetAbsoluteUri(node.OwnerDocument.PageUrl, t);
             }
             return null;
         }
@@ -1568,7 +1589,7 @@ namespace Shaman
         {
 
             if (node == null) throw new ArgumentNullException();
-
+            if (node.NodeType == HtmlNodeType.Text) return GetText((HtmlTextNode)node);
 
             var sb = ReseekableStringBuilder.AcquirePooledStringBuilder();
 
@@ -1581,9 +1602,93 @@ namespace Shaman
         }
 
 
+#if !STANDALONE
+        public static string GetText(HtmlTextNode node)
+        {
+            var internalText = node.Text;
+
+            int startOfText = -1;
+            for (int i = 0; i < internalText.Length; i++)
+            {
+                if (!IsWhiteSpace(internalText[i]))
+                {
+                    startOfText = i;
+                    break;
+                }
+            }
+            if (startOfText == -1) return null;
+
+            var endOfText = -1;
+            for (int i = internalText.Length - 1; i >= 0; i--)
+            {
+                if (!IsWhiteSpace(internalText[i]))
+                {
+                    endOfText = i + 1;
+                    break;
+                }
+            }
+            var needsStringBuilder = false;
+            var prevWasWhite = false;
+            for (int i = startOfText; i < endOfText; i++)
+            {
+                var iswhite = IsWhiteSpace(internalText[i]);
+                if (iswhite)
+                {
+                    if (prevWasWhite || internalText[i] != ' ')
+                    {
+                        needsStringBuilder = true;
+                        break;
+                    }
+                }
+                prevWasWhite = iswhite;
+            }
+
+            if (!needsStringBuilder)
+            {
+                return internalText.Substring(startOfText, endOfText - startOfText);
+            }
+
+            TextStatus status = TextStatus.Start;
+            StringBuilder sb = ReseekableStringBuilder.AcquirePooledStringBuilder();
+
+            for (int i = startOfText; i < endOfText; i++)
+            {
+                var ch = internalText[i];
+                if (IsWhiteSpace(ch))
+                {
+                    if (status == TextStatus.LastCharWasVisible)
+                    {
+                        status = TextStatus.MustInsertSpaceBeforeNextVisibleChar;
+                    }
+                }
+                else
+                {
+                    if (status == TextStatus.MustInsertSpaceBeforeNextVisibleChar) sb.Append(' ');
+
+                    sb.Append(ch);
+                    status = TextStatus.LastCharWasVisible;
+                }
+            }
+            TrimLastWhitespaceCharacters(sb);
+            var s = sb.ToFinalString();
+            ReseekableStringBuilder.Release(sb);
+            return s;
+            
+
+        }
+
+
+#endif
+
+
+        private static bool IsWhiteSpace(char ch)
+        {
+            return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+        }
 
         public static string GetFirstLevelText(this HtmlNode node, bool includeLinks = false, bool includeBold = true)
         {
+            if (!node.HasChildNodes) return null;
             return node.ChildNodes.Where(delegate (HtmlNode child)
             {
                 if (child.NodeType == HtmlNodeType.Text) return true;
@@ -1641,7 +1746,7 @@ namespace Shaman
             for (int i = length - 1; i >= 0; i--)
             {
                 var ch = s[i];
-                if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\xA0') length--;
+                if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') length--;
                 else break;
             }
             if (length != s.Length)
@@ -1654,7 +1759,7 @@ namespace Shaman
             for (int i = initialLength - 1; i >= 0; i--)
             {
                 var ch = sb[i];
-                if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\xA0') sb.Length--;
+                if (IsWhiteSpace(ch)) sb.Length--;
                 else break;
             }
 #endif
@@ -1769,6 +1874,9 @@ namespace Shaman
         public static IEnumerable<HtmlNode> FindAll(this HtmlNode context, string selector)
         {
             if (selector == null || context == null) throw new ArgumentNullException();
+#if !SKIP_FORMAT_FUNCTION
+            if (selector.StartsWith(":code")) return FindWithCode(context, selector);
+#endif
             return context.QuerySelectorAll(selector);
         }
 
@@ -1776,9 +1884,42 @@ namespace Shaman
         public static HtmlNode FindSingle(this HtmlNode context, string selector)
         {
             if (selector == null || context == null) throw new ArgumentNullException();
+#if !SKIP_FORMAT_FUNCTION
+            if (selector.StartsWith(":code")) return FindWithCode(context, selector).FirstOrDefault();
+#endif
             return context.QuerySelector(selector);
         }
 
+#if !SKIP_FORMAT_FUNCTION
+        [StaticFieldCategory(StaticFieldCategory.Cache)]
+        private static Dictionary<string, FormatFunction> FormatFunctionCache = new Dictionary<string, FormatFunction>();
+
+        private static IEnumerable<HtmlNode> FindWithCode(HtmlNode context, string selector)
+        {
+            FormatFunction k;
+            lock (FormatFunctionCache)
+            {
+                k = FormatFunctionCache.TryGetValue(selector);
+                if (k == null)
+                {
+                    var z = selector.AsValueString().Substring(5).Trim();
+                    if (z.Length >= 2 && z[0] == '(' && z[z.Length - 1] == ')') z = z.Substring(1, z.Length - 2);
+                    k = FormatFunction.Parse(z.ToClrString());
+                    FormatFunctionCache[selector] = k;
+                }
+            }
+            var exec = new FormatFunctionExecutor();
+            exec.Variables = new Dictionary<string, object>();
+            exec.Variables["node"] = context;
+            var m = exec.ExecuteAsync(k).AssumeCompleted();
+            if (m == null) return Enumerable.Empty<HtmlNode>();
+            if (m is HtmlNode) return new[] { (HtmlNode)m };
+            if (m is IEnumerable<HtmlNode>) return (IEnumerable<HtmlNode>)m;
+            if (m is string) return new[] { FizzlerCustomSelectors.WrapText(context, (string)m) };
+            if (m is IEnumerable<string>) return ((IEnumerable<string>)m).Select(x => FizzlerCustomSelectors.WrapText(context, x));
+            throw new NotSupportedException(":code() function should return string(s) or HtmlNode(s).");
+        }
+#endif
 #if !SALTARELLE
 
         private static void EnsurePageConstraints(HtmlNode node,
@@ -1919,15 +2060,15 @@ namespace Shaman
                         {
                             options.PostString = item.Value;
                         }
+                        else if (key.StartsWith("$json-post-."))
+                        {
+                            if (jsonPostSingleJson == null) jsonPostSingleJson = new JObject();
+                            SetJsonMetaparameter(jsonPostSingleJson, key.Substring(12), item.Value);
+                        }
                         else if (key.StartsWith("$json-post-"))
                         {
                             if (jsonPostObjects == null) jsonPostObjects = new Dictionary<string, JObject>();
                             AddJsonPartialField(jsonPostObjects, key.Substring(11), item.Value);
-                        }
-                        else if (key.StartsWith("$json-post"))
-                        {
-                            if (jsonPostSingleJson == null) jsonPostSingleJson = new JObject();
-                            SetJsonMetaparameter(jsonPostSingleJson, key.Substring(11), item.Value);
                         }
                         else if (key.StartsWith("$header-"))
                         {
@@ -1935,7 +2076,7 @@ namespace Shaman
                             if (name == "User-Agent") options.UserAgent = item.Value;
                             else if (name == "Referer")
                             {
-                                options.Referrer = HttpUtils.GetAbsoluteUriAsString(url.Url, item.Value).AsUri();
+                                options.Referrer = HttpUtils.GetAbsoluteUriAsString(url.PathConsistentUrl, item.Value).AsUri();
                             }
                             else options.AddHeader(name, item.Value);
                         }
@@ -1964,6 +2105,11 @@ namespace Shaman
                     if (jsonPostSingleJson != null)
                     {
                         options.PostString = jsonPostSingleJson.ToString(Newtonsoft.Json.Formatting.None);
+                        if (metaParameters.TryGetValue("header-Content-Type") == null)
+                        {
+                            options.AddHeader("Content-Type", "application/json");
+                        }
+
                     }
                 }
             }
@@ -2027,28 +2173,39 @@ namespace Shaman
 
 #endif
 
+#if STANDALONE
+        internal static bool ContainsIndex<T>(this List<T> array, int index)
+        {
+            return index >= 0 && index < array.Count;
+        }
+#endif
+
+        public static bool IsJson(this HtmlDocument document)
+        {
+            return document.DocumentNode.GetAttributeValue("awdee-converted-json") == "1";
+        }
+
+        public static bool IsXml(this HtmlDocument document)
+        {
+            return (document.DocumentNode.ChildNodes.Any(x => x.TagName == "?xml") && !document.DocumentNode.ChildNodes.Any(x => x.TagName == "html"));
+        }
 
 
         public static void SetPageUrl(this HtmlDocument document, Uri url)
         {
-            if (url == null)
-                document.DocumentNode.Attributes.Remove("document-url");
-            else
-                document.DocumentNode.SetAttributeValue("document-url", url.AbsoluteUri);
+            document.PageUrl = url;
         }
 #if !SALTARELLE
         public static void SetPageUrl(this HtmlDocument document, LazyUri url)
         {
-            if (url == null)
-                document.DocumentNode.Attributes.Remove("document-url");
-            else
-                document.DocumentNode.SetAttributeValue("document-url", url.AbsoluteUri);
+            document.PageUrl = url.Url;
         }
 #endif
 
 
-
+        [StaticFieldCategory(StaticFieldCategory.Stable)]
         internal static Dictionary<string, string> mimeToExtension;
+        [StaticFieldCategory(StaticFieldCategory.Stable)]
         internal static Dictionary<string, string> extensionToMime;
         internal static void InitializeMimesDictionary()
         {

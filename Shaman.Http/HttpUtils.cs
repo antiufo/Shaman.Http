@@ -14,13 +14,14 @@ using System.Linq;
 using System.IO;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Globalization;
 
 namespace Shaman
 {
 #if STANDALONE
     public static partial class HttpUtils
 #else
-	public static partial  class Utils
+    public static partial class Utils
 #endif
     {
         public readonly static string UriSchemeHttp = "http";
@@ -73,7 +74,7 @@ namespace Shaman
 
 
 #if !SALTARELLE
-        internal static LazyUri GetVaryUrl(LazyUri url, 
+        internal static LazyUri GetVaryUrl(LazyUri url,
 #if NET35
         IDictionary<string, string> metaParameters,
 #else
@@ -274,12 +275,12 @@ namespace Shaman
         }
 
         [Configuration]
-        private static string[] Configuration_PageExtensions = new[]{".php", ".asp", ".aspx", ".mspx", ".htm", ".html", ".jsp", ".do"};
-        
+        private static string[] Configuration_PageExtensions = new[] { ".php", ".asp", ".aspx", ".mspx", ".htm", ".html", ".jsp", ".do" };
+
 
         [Configuration]
-        private static string[] Configuration_DownloadWrapperNames = new[]{"download", "action", "torrent", "get_file", "getfile", "file.php"};
-        
+        private static string[] Configuration_DownloadWrapperNames = new[] { "download", "action", "torrent", "get_file", "getfile", "file.php" };
+
         public const WebExceptionStatus WebAuthenticationRequested = (WebExceptionStatus)0x7FFF0000;
         public const WebExceptionStatus RedirectLoopDetected = (WebExceptionStatus)0x7FFF0001;
         public const WebExceptionStatus UnexpectedRedirect = (WebExceptionStatus)0x7FFF0002;
@@ -385,12 +386,12 @@ namespace Shaman
 
                     if (eq != -1)
                     {
-                        name = query.Substring(i, eq - i);
-                        value = UnescapeDataString(query.Substring(eq + 1, end - eq - 1));
+                        name = query.SubstringCached(i, eq - i);
+                        value = UnescapeDataString(query.SubstringCached(eq + 1, end - eq - 1));
                     }
                     else
                     {
-                        name = query.Substring(i, end - i);
+                        name = query.SubstringCached(i, end - i);
                         value = string.Empty;
                     }
                     name = UnescapeDataString(name);
@@ -455,7 +456,7 @@ namespace Shaman
             }
             return string.Format(data, escaped);
         }
-        
+
 
 
 
@@ -485,20 +486,40 @@ namespace Shaman
 
 #if !SALTARELLE
 
-
-        public static Task<HtmlNode> ClickFormButtonAsync(HtmlNode button, WebRequestOptions options,
+        public static Task<HtmlNode> ClickFormButtonAsync(this HtmlNode button,
 #if NET35
-        IList<KeyValuePair<string, string>> parameters = null
-#else 
-        IReadOnlyList<KeyValuePair<string, string>> parameters = null
+            IList<KeyValuePair<string, string>> parameters
+#else
+            IReadOnlyList<KeyValuePair<string, string>> parameters
 #endif
+            )
+        {
+            return ClickFormButtonAsync(button, null, parameters, null);
+        }
+
+        public static async Task<HtmlNode> ClickFormButtonAsync(this HtmlNode button, WebRequestOptions options = null,
+#if NET35
+        IList<KeyValuePair<string, string>> parameters = null,
+#else
+        IReadOnlyList<KeyValuePair<string, string>> parameters = null,
+#endif
+        Shaman.Runtime.CookieContainer cookies = null
 )
         {
             if (options == null) options = new WebRequestOptions();
-            return SetUpOptionsFromFormButton(button, options, parameters).GetHtmlNodeAsync(options);
+            var t = SetUpOptionsFromFormButton(button, options, parameters);
+            return t.Processor(await t.Url.GetHtmlNodeAsync(options, cookies));
         }
 
-        public static LazyUri SetUpOptionsFromFormButton(HtmlNode button, WebRequestOptions options,
+
+
+        public class SetUpOptionsFromFormInfo
+        {
+            public LazyUri Url;
+            public Func<HtmlNode, HtmlNode> Processor;
+        }
+
+        public static SetUpOptionsFromFormInfo SetUpOptionsFromFormButton(HtmlNode button, WebRequestOptions options,
 #if NET35
         IList<KeyValuePair<string, string>> parameters = null
 #else
@@ -506,8 +527,25 @@ namespace Shaman
 #endif
         )
         {
-            var form = button.AncestorsAndSelf().FirstOrDefault(x => x.TagName == "form");
-            if (form == null) throw new ArgumentException("The specified button is not contained within a form.");
+            JObject a4joptions = null;
+            HtmlNode form = null;
+            var onclick = button.GetAttributeValue("onclick");
+            if (onclick != null && onclick.Contains(a4jPrefix))
+            {
+                var formname = onclick.Capture(@"A4J\.AJAX\.Submit\('(.*?)'");
+                form = button.OwnerDocument.DocumentNode.DescendantsAndSelf().First(x => x.Id == formname);
+                using (var reader = new FizzlerCustomSelectors.PartialStringReader(onclick, onclick.IndexOf(",{", onclick.IndexOf(a4jPrefix)) + 1))
+                using (var jr = CreateJsonReader(reader))
+                {
+                    a4joptions = (JObject)JToken.ReadFrom(jr);
+                }
+
+            }
+            else
+            {
+                form = button.AncestorsAndSelf().FirstOrDefault(x => x.TagName == "form");
+                if (form == null) throw new ArgumentException("The specified button is not contained within a form.");
+            }
 
 #if SALTARELLE && false
             var method = form.GetAttributeValue("method");
@@ -526,7 +564,7 @@ namespace Shaman
 
 
 
-            var url = new LazyUri(GetAbsoluteUriAsString(form.OwnerDocument.GetBaseUrl(), form.GetAttributeValue("action")));
+            var url = new LazyUri(GetAbsoluteUriAsString(form.OwnerDocument.BaseUrl, (a4joptions != null ? a4joptions.Value<string>("actionUrl") : null) ?? form.GetAttributeValue("action")));
 
 
             if (options != null)
@@ -558,9 +596,17 @@ namespace Shaman
                     }
                 };
 
-
-            PopulateSubmitButtonParameter(button, add);
-
+            if (a4joptions != null)
+            {
+                var containerIdOrDefault = a4joptions.Value<string>("containerId") ?? "_viewRoot";
+                add("AJAXREQUEST", containerIdOrDefault);
+                var name = button.GetAttributeValue("name") ?? button.Id;
+                if (name != null) add(name, name);
+            }
+            else
+            {
+                PopulateSubmitButtonParameter(button, add);
+            }
 
 
             if (parameters != null)
@@ -582,6 +628,12 @@ namespace Shaman
                 PopulateFormParameters(item, x =>
                 {
 
+                    if (a4joptions != null)
+                    {
+                        var f = GetA4jField(button, x.GetAttributeValue("name") ?? x.Id, a4joptions);
+                        if (f == null) return null;
+                        if (f == false) return string.Empty;
+                    }
                     var type = x.GetAttributeValue("type");
                     if (x.TagName == "textarea")
                     {
@@ -603,8 +655,100 @@ namespace Shaman
                     }
                 }, add);
             }
-            return url;
 
+            string originalDocumentHtml = null;
+            if (a4joptions != null)
+            {
+                var sw = new StringWriter();
+                button.OwnerDocument.WriteTo(sw, false);
+                originalDocumentHtml = sw.ToString();
+                var p = (JObject)a4joptions["parameters"];
+                if (p != null)
+                {
+                    foreach (var prop in p.Properties())
+                    {
+                        add(prop.Name, Convert.ToString(prop.Value, CultureInfo.InvariantCulture));
+                    }
+                }
+            }
+
+
+
+            return new SetUpOptionsFromFormInfo() { Url = url, Processor = a4joptions != null ? MakeA4jProcessor(originalDocumentHtml, a4joptions.Value<string>("org.ajax4jsf.portlet.NAMESPACE"), button.OwnerDocument.DocumentNode.Attributes.ToDictionary(x => x.OriginalName, x => x.Value)) : new Func<HtmlNode, HtmlNode>(x => x) };
+
+        }
+
+        private static Func<HtmlNode, HtmlNode> MakeA4jProcessor(string originalDocumentHtml, string ns, Dictionary<string, string> documentAttributes)
+        {
+            return x =>
+            {
+
+
+                var ajaxResponse = x.TryGetValue(":property('Ajax-Response')") ?? x.GetAttributeValue("header-ajax-response");
+                var expiredMsg = x.TryGetValue(":property('Ajax-Expired')") ?? x.GetAttributeValue("header-ajax-expired");
+                if (expiredMsg != null) throw new Exception("The stateful page is expired: " + expiredMsg);
+                if (ajaxResponse == "true")
+                {
+                    var d = new HtmlDocument();
+
+                    d.LoadHtml(originalDocumentHtml);
+                    var docnode = d.DocumentNode;
+                    foreach (var attr in documentAttributes)
+                    {
+                        docnode.SetAttributeValue(attr.Key, attr.Value);
+                    }
+                    var idsFromResponse = x.TryGetValue(":property('Ajax-Update-Ids')") ?? x.GetAttributeValue("header-Ajax-Update-Ids");
+                    if (!string.IsNullOrEmpty(idsFromResponse))
+                    {
+                        var ids = idsFromResponse.SplitFast(',');
+                        foreach (var id in ids)
+                        {
+                            var newnode = x.DescendantsAndSelf().First(y => y.Id == id);
+                            var old = docnode.DescendantsAndSelf().FirstOrDefault(y => y.Id == id);
+                            if (old != null)
+                            {
+                                var parent = old.ParentNode;
+                                var idx = parent.ChildNodes.IndexOf(old);
+                                parent.RemoveChild(old);
+                                parent.ChildNodes.Insert(idx, newnode);
+                                d.SetOwnerDocumentRecursive(newnode);
+                            }
+                        }
+                    }
+
+
+
+
+
+                    var idsSpan = x.DescendantsAndSelf().FirstOrDefault(y => y.Id == "ajax-view-state");
+                    // LOG.debug("Hidden JSF state fields: " + idsSpan);
+                    if (idsSpan != null)
+                    {
+
+                        // LOG.debug("Namespace for hidden view-state input fields is " + namespace);
+                        var anchor = ns != null ? docnode.DescendantsAndSelf().First(y => y.Id == ns) : docnode;
+                        var inputs = anchor.DescendantsAndSelf("input").ToList();
+
+                        var newinputs = idsSpan.DescendantsAndSelf("input").ToList();
+                        //A4J.AJAX.replaceViewState(inputs, newinputs);
+                        foreach (var newinput in newinputs)
+                        {
+                            foreach (var oldinput in inputs)
+                            {
+                                if (newinput.GetAttributeValue("name") == oldinput.GetAttributeValue("name"))
+                                {
+                                    oldinput.SetAttributeValue("value", newinput.GetAttributeValue("value"));
+                                }
+                            }
+                        }
+
+
+                    }
+
+                    return docnode;
+                }
+                return x;
+            };
         }
 
 
@@ -614,6 +758,9 @@ namespace Shaman
             FizzlerCustomSelectors.RegisterAll();
         }
 #endif
+
+
+        const string a4jPrefix = "A4J.AJAX.Submit(";
 
         [RestrictedAccess]
         public static void PopulateSubmitButtonParameter(HtmlNode button, Action<string, string> add)
@@ -640,6 +787,7 @@ namespace Shaman
             }
             else if (onclick != null)
             {
+
                 if (onclick.StartsWith("if(typeof jsfcljs == 'function')"))
                 {
                     var idx = onclick.IndexOf(',');
@@ -669,6 +817,13 @@ namespace Shaman
 
         }
 
+        private static bool? GetA4jField(HtmlNode element, string name, JObject a4joptions)
+        {
+            var hiddenOnly = a4joptions.Value<bool?>("single").GetValueOrDefault(false);
+            if (hiddenOnly && element.GetAttributeValue("type") != "hidden") return null;
+            if (name.EndsWith("_link_hidden_") || name.EndsWith("_idcl")) return null;
+            return true;
+        }
 
         public static bool UrisEqual(LazyUri a, LazyUri b)
         {
@@ -784,9 +939,9 @@ namespace Shaman
 #endif
 
         }
-        
-        
-        
+
+
+
 #if NET35
         public static bool IsNullOrWhiteSpace(string value)
         {
@@ -829,6 +984,36 @@ namespace Shaman
             
         }
 #endif
+
+        public static HtmlNode GetPreviousElementSibling(this HtmlNode node)
+        {
+            node = node.PreviousSibling;
+            while (node != null && node.NodeType != HtmlNodeType.Element)
+            {
+                node = node.PreviousSibling;
+            }
+            return node;
+        }
+        public static HtmlNode GetNextElementSibling(this HtmlNode node)
+        {
+            node = node.NextSibling;
+            while (node != null && node.NodeType != HtmlNodeType.Element)
+            {
+                node = node.NextSibling;
+            }
+            return node;
+        }
+
+        public static HtmlNode GetFirstElementChild(this HtmlNode node)
+        {
+            node = node.FirstChild;
+            while (node != null && node.NodeType != HtmlNodeType.Element)
+            {
+                node = node.NextSibling;
+            }
+            return node;
+        }
+
     }
 
 

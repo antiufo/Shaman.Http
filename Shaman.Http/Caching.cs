@@ -97,7 +97,7 @@ namespace Shaman.Runtime
                 ExceptionMessage = ex.Message,
                 ExceptionType = ex.GetType().FullName,
                 ContentType = unexpectedContentType != null ? unexpectedContentType.ContentType : null,
-                RedirectUrl = respondingUrl?.Url
+                RedirectUrl = respondingUrl
             };
         }
 
@@ -171,13 +171,18 @@ namespace Shaman.Runtime
                     }
 
                     cache.DataType = (WebCacheDataType)br.ReadByte();
-                    cache.RedirectUrl = br.ReadNullableString().AsUri(true);
+                    cache.RedirectUrl = br.ReadNullableString()?.AsLazyUri();
                     var p = br.ReadNullableString();
                     cache.Url = p != null ? new LazyUri(p) : null;
                     cache.Result = br.ReadNullableString();
                     if (q >= 51)
                     {
                         cache.JsExecutionResults = br.ReadNullableString();
+                        if (q >= 52)
+                        {
+                            var pp = br.ReadNullableString();
+                            cache.PageUrl = pp != null ? new LazyUri(pp) : null;
+                        }
                     }
 
                     return cache;
@@ -216,6 +221,7 @@ namespace Shaman.Runtime
             set;
         }
 
+        [StaticFieldCategory(StaticFieldCategory.TODO)]
         private static Stopwatch lastFlush;
 
         internal static void SaveCache(string cachePath, WebCache webCache)
@@ -229,7 +235,7 @@ namespace Shaman.Runtime
                 using (var bw = new BinaryWriter(gz, Encoding.UTF8))
                 {
                     Sanity.AssertFastWriteByte(gz.BaseStream);
-                    bw.Write((byte)51);
+                    bw.Write((byte)52);
                     bw.WriteNullableString(webCache.ContentType);
                     bw.Write(webCache.DateRetrieved.Ticks);
                     bw.Write(webCache.ErrorCode);
@@ -260,6 +266,7 @@ namespace Shaman.Runtime
                     bw.WriteNullableString(webCache.Url != null ? webCache.Url.AbsoluteUri : null);
                     bw.WriteNullableString(webCache.Result);
                     bw.WriteNullableString(webCache.JsExecutionResults);
+                    bw.WriteNullableString(webCache.PageUrl?.AbsoluteUri);
                 }
             }
 
@@ -303,7 +310,7 @@ namespace Shaman.Runtime
             var unexpectedResponseType = data.ExceptionType == typeof(NotSupportedResponseException).FullName;
             if (unexpectedResponseType)
             {
-                return new NotSupportedResponseException(data.ContentType, new LazyUri(data.RedirectUrl));
+                return new NotSupportedResponseException(data.ContentType, data.RedirectUrl);
             }
 
             var webex = data.ExceptionType == "System.Net.WebException" || data.ExceptionType == "System.Net.Reimpl.WebException";
@@ -315,7 +322,7 @@ namespace Shaman.Runtime
                         data.ExceptionType = typeof(NotSupportedResponseException).FullName;
                     var type = new[] { typeof(int).GetTypeInfo().Assembly, typeof(Uri).GetTypeInfo().Assembly }
                     .Select(x => x.GetType(data.ExceptionType)).FirstOrDefault(x => x != null);
-                    return type != null ? (Exception)Activator.CreateInstance(type) : new Exception(data.ExceptionMessage + ": " + data.ExceptionType);
+                    return type != null ? (Exception)Activator.CreateInstance(type) : new WebException(data.ExceptionMessage + ": " + data.ExceptionType);
                 }
                 catch (Exception)
                 {
@@ -330,9 +337,10 @@ namespace Shaman.Runtime
                 return w;
             }
 
-            return new Exception(data.ExceptionMessage + " (" + data.ExceptionType + ")");
+            return new WebException(data.ExceptionMessage + " (" + data.ExceptionType + ")");
         }
 
+        [StaticFieldCategory(StaticFieldCategory.Configuration)]
         internal static string WebCachePath;
         internal static void SetDummyResponseWithUrl(WebException w, LazyUri url, HttpStatusCode statusCode)
         {
@@ -366,13 +374,20 @@ namespace Shaman.Runtime
         [RestrictedAccess]
         public static void EnableWebCache(string path)
         {
-            if (path == null)
-                throw new ArgumentNullException();
-            path = Path.GetFullPath(path);
-            Directory.CreateDirectory(path);
+            if (WebCachePath != null && (path != WebCachePath && path != null))
+            {
+                BlobStore.FlushDirectory(WebCachePath);
+                BlobStore.CloseDirectory(WebCachePath);
+            }
+            if (path != null)
+            { 
+                path = Path.GetFullPath(path);
+                Directory.CreateDirectory(path);
+            }
             WebCachePath = path;
         }
 
+        [StaticFieldCategory(StaticFieldCategory.Configuration)]
         internal static string fileCachePath;
         public static string FileCachePath
         {
@@ -418,16 +433,18 @@ namespace Shaman.Runtime
         }
 #endif
         [ThreadStatic]
+        [StaticFieldCategory(StaticFieldCategory.Configuration)]
         private static string ThreadWebCache;
 
         private const int CacheFileNameMaxLength = 150;
-        private const int CacheFolderMaxLength = 255 - CacheFileNameMaxLength - 3 - 1 - 1;
+        private const int ShamanBlobsPackageNameLength = 50; // 49 actually, just to be sure
+        private const int CacheFolderMaxLength = 255 - ShamanBlobsPackageNameLength - 3 - 1 - 1;
         public static string GetPath(LazyUri url, string folder, string extension = null)
         {
             return GetFileSystemName(url, folder, extension ?? ".dat", true, false);
         }
 
-        internal static string GetFileSystemName(LazyUri lazyurl, string cacheFolder, string extension, bool createLng, bool partition = true)
+        internal static string GetFileSystemName(LazyUri url, string cacheFolder, string extension, bool createLng, bool partition = true)
         {
             var hashed = false;
             var isazure = cacheFolder != null && cacheFolder.StartsWith("azure:");
@@ -435,24 +452,24 @@ namespace Shaman.Runtime
                 return null;
             if (!isazure && cacheFolder.Length > CacheFolderMaxLength)
                 throw new ArgumentException("The path of the file cache folder must not be longer than " + CacheFolderMaxLength + " characters.");
-            var url = lazyurl.Url;
+            
             var str = url.AbsoluteUri;
             var hashcode = Math.Abs((long)str.GetHashCode());
             var sb = ReseekableStringBuilder.AcquirePooledStringBuilder();
             if (url.Scheme != "http" && url.Scheme != "https")
                 throw new NotSupportedException("URI scheme is not supported.");
             var https = url.Scheme == "https";
-            sb.Append(url.DnsSafeHost);
+            sb.Append((string)url.DnsSafeHost);
             if (!url.IsDefaultPort)
             {
                 sb.Append("∴");
-                sb.AppendFast(url.Port);
+                sb.AppendFast((int)url.Port);
             }
 
             sb.Append(https ? "₰" : "ℓ");
             sb.Append(url.AbsolutePath.Substring(1));
-            sb.Append(url.Query);
-            sb.Append(url.Fragment);
+            sb.Append((string)url.Query);
+            sb.Append((string)url.Fragment);
             if (sb.Length <= CacheFileNameMaxLength)
             {
                 FixupFabulousUrl(sb);
@@ -479,7 +496,7 @@ namespace Shaman.Runtime
                 if (!url.IsDefaultPort)
                 {
                     sb.Append("∴");
-                    sb.AppendFast(url.Port);
+                    sb.AppendFast((int)url.Port);
                 }
 
                 sb.Append(https ? "₰" : "ℓ");
@@ -525,7 +542,7 @@ namespace Shaman.Runtime
                 {
                     var p = Path.ChangeExtension(path, ".lng");
                     if (!BlobStore.Exists(p))
-                        BlobStore.WriteAllText(p, url.AbsoluteUri, Encoding.UTF8);
+                        BlobStore.WriteAllText(p, (string)url.AbsoluteUri, Encoding.UTF8);
                 }
             }
 
@@ -694,6 +711,7 @@ namespace Shaman.Runtime
             return DeleteFileCacheAsync(url, FileCachePath, ".dat", true);
         }
 
+        [StaticFieldCategory(StaticFieldCategory.TODO)]
         internal static Dictionary<string, Task<HashSet<string>>> CachedFiles;
         private static async Task DeleteFileCacheAsync(LazyUri url, string cachedir, string extension, bool fileCache)
         {
@@ -746,7 +764,9 @@ namespace Shaman.Runtime
             return m;
         }
 
+        [StaticFieldCategory(StaticFieldCategory.Configuration)]
         internal static ICompactAzureApi AzureApi;
+        [StaticFieldCategory(StaticFieldCategory.Configuration)]
         internal static Type AzureApiTypeImpl;
         internal static string GetAzureContainer(LazyUri url)
         {
@@ -756,7 +776,7 @@ namespace Shaman.Runtime
 
         private static string GetAzureContainerInternal(LazyUri url)
         {
-            var host = url.Url.DnsSafeHost;
+            var host = url.DnsSafeHost;
             var p = host.SplitFast('.');
             if (p.Length == 3 && p[0] == "www")
                 return p[1] + "." + p[2];

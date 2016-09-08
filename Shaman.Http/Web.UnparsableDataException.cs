@@ -55,7 +55,7 @@ namespace Xamasoft
             set
             {
                 SourceData = value != null ? value.WriteTo() : null;
-                Url = value.OwnerDocument.GetPageUrl();
+                Url = value.OwnerDocument.PageUrl;
             }
         }
 

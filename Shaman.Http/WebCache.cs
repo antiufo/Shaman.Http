@@ -14,7 +14,8 @@ namespace Shaman
         public string Result;
         public WebCacheDataType DataType;
         public LazyUri Url;
-        public Uri RedirectUrl;
+        public LazyUri PageUrl;
+        public LazyUri RedirectUrl;
         public int ErrorCode;
         public string ExceptionType;
         public string ExceptionMessage;
@@ -65,7 +66,7 @@ namespace Shaman
             if (RedirectUrl != null)
                 docnode.SetAttributeValue("redirect-url", this.RedirectUrl.AbsoluteUri);
             docnode.SetAttributeValue("requested-url", url.AbsoluteUri);
-            html.OwnerDocument.SetPageUrl(this.Url);
+            html.OwnerDocument.SetPageUrl(this.PageUrl ?? this.Url);
             return html;
         }
     }

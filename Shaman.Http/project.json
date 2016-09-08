@@ -1,12 +1,14 @@
 {
-  "version": "1.0.0-beta-4222",
-  "compilationOptions": {
+  "version": "1.0.1.2",
+  "buildOptions": {
     "define": [
       "DESKTOP",
       "STANDALONE",
       "SMALL_LIB_AWDEE",
       "SHAMAN_CORE",
-      "NATIVE_HTTP"
+      "NATIVE_HTTP",
+      "SHAMAN",
+      "SKIP_FORMAT_FUNCTION"
     ],
     "allowUnsafe": true,
     "keyFile": "ShamanOpenSourceKey.snk"
@@ -25,51 +27,39 @@
   ],
   "compile": [],
   "dependencies": {
-    "Shaman.BlobStore": "1.0.0-beta-4710",
-    "Shaman.Fizzler": "1.0.1.8",
-    "Shaman.CommonExtensions": "1.0.0-beta-4897",
+    "Shaman.BlobStore": "1.0.1.1",
+    "Shaman.Fizzler": "1.0.1.10",
+    "Shaman.Dom": "1.0.1.14",
+    "Shaman.CommonExtensions": "1.0.1.1",
     "Newtonsoft.Json": "6.0.5",
-    "Shaman.FileSize": "1.0.0-beta-4979",
-    "Shaman.FileSystem": "1.0.0-beta-4175",
-    "Shaman.Configuration.Metadata": "1.0.0-beta-4922",
-    "Shaman.ValueString": "1.0.2.9"
+    "Shaman.FileSize": "1.0.1.1",
+    "Shaman.FileSystem": "1.0.1.1",
+    "Shaman.Configuration.Metadata": "1.0.1.1",
+    "Shaman.ValueString": "1.0.2.15"
   },
   "frameworks": {
     "net46": {
       "frameworkAssemblies": {
-        "System.Windows.Forms": "4.0.0.0",
-        "System.ServiceModel": "4.0.0.0",
-        "System.Runtime": "4.0.0.0",
-        "System.Drawing": "4.0.0.0",
-        "System.Data": "4.0.0.0",
-        "System.IO": "4.0.0.0",
-        "System.Collections": "4.0.0.0",
-        "System.Text.Encoding": "4.0.0.0",
-        "System.Net.Http": "4.0.0.0",
-        "System.Text.RegularExpressions": "4.0.0.0",
-        "System.Globalization": "4.0.0.0"
+        "System.Net.Http": "4.1.0"
       }
     },
-    "dotnet5.4": {
-      "compilationOptions": {
+    "netstandard1.3": {
+      "imports": "portable-net45+win8+wp8+wpa81",
+      "buildOptions": {
         "define": [
-          "CORECLR",
-          "NATIVE_HTTP"
+          "CORECLR"
         ]
       },
       "dependencies": {
-        "System.IO.Compression": "4.0.1-beta-23225",
-        "System.Diagnostics.Debug": "4.0.11-beta-23225",
-        "System.Net.Http": "4.0.1-beta-23225",
-        "System.Net.Requests": "4.0.11-beta-23225",
-        "System.Dynamic.Runtime": "4.0.11-beta-23225",
-        "System.Threading.Timer": "4.0.1-beta-23225",
-        "System.Runtime.InteropServices": "4.0.21-beta-23225",
-        "System.Text.RegularExpressions": "4.0.11-beta-23225",
-        "System.Reflection": "4.1.0-beta-23225",
-        "System.Reflection.TypeExtensions": "4.0.1-beta-23225",
-        "System.Security.Cryptography.Algorithms": "4.0.0-beta-23225",
-        "System.Threading.Thread": "4.0.0-beta-23225"
+        "System.Net.Http": "4.1",
+        "System.Net.Requests": "4.0.11",
+        "System.IO.Compression": "4.1",
+        "System.Threading.Timer": "4.0.1",
+        "System.Reflection": "4.1",
+        "System.Reflection.TypeExtensions": "4.1.0",
+        "System.Threading.Thread": "4.0.0",
+        "System.Dynamic.Runtime": "4.0.11",
+        "System.Text.RegularExpressions": "4.1.0"
       }
     },
     "net35": {

@@ -24,6 +24,7 @@ namespace Shaman.Runtime
 
         private volatile int position;
 
+        public MediaStreamManager Manager => manager;
 
         internal MediaStream(MediaStreamManager manager, WebFile file, int id, bool linger)
         {

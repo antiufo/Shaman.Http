@@ -44,6 +44,7 @@ namespace Shaman.Runtime
             return Caching.GetWebCachePath(new LazyUri("http://shaman-cookies/?id=" + HttpUtils.EscapeDataString(CacheVaryKey)), false, true);
         }
 
+        [StaticFieldCategory(StaticFieldCategory.TODO)]
         private static Dictionary<string, int> isolatedCookieContainerIds = new Dictionary<string, int>();
 
         internal static IsolatedCookieContainer Create(string id)

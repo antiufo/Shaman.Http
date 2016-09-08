@@ -16,7 +16,7 @@ namespace Shaman.Runtime
         public Uri DomUrl;
         public Uri RedirectUrl;
         public string Error;
-        public Uri RequestedUrl;
+        public string RequestedUrl;
         public List<KeyValuePair<string, string>> Cookies;
 
 
@@ -48,7 +48,7 @@ namespace Shaman.Runtime
             }
             doc.SetPageUrl(DomUrl);
             doc.DocumentNode.SetAttributeValue("date-retrieved", DateTime.UtcNow.ToString("o"));
-            doc.DocumentNode.SetAttributeValue("requested-url", RequestedUrl.AbsoluteUri);
+            doc.DocumentNode.SetAttributeValue("requested-url", RequestedUrl);
 
             foreach (var noscript in doc.DocumentNode.DescendantsAndSelf("noscript").ToList())
             {
