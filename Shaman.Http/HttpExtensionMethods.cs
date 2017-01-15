@@ -2055,8 +2055,9 @@ namespace Shaman
 #endif
         ProcessMetaParameters(LazyUri url, WebRequestOptions options)
         {
-            Dictionary<string, JObject> jsonPostObjects = null;
-            JObject jsonPostSingleJson = null;
+            Dictionary<string, JToken> jsonPostObjects = null;
+            Dictionary<string, JToken> jsonQueryObjects = null;
+            JToken jsonPostSingleJson = null;
             var metaParameters = url.FragmentParameters.Where(x => x.Key.StartsWith("$")).ToDictionary();
             if (metaParameters.Any())
             {
@@ -2089,15 +2090,23 @@ namespace Shaman
                         {
                             options.PostString = item.Value;
                         }
-                        else if (key.StartsWith("$json-post-."))
+                        else if (key.StartsWith("$json-post.") || key == "$json-post~")
                         {
-                            if (jsonPostSingleJson == null) jsonPostSingleJson = new JObject();
-                            SetJsonMetaparameter(jsonPostSingleJson, key.Substring(12), item.Value);
+                            SetJsonMetaparameter(ref jsonPostSingleJson, key.Substring(10), item.Value);
                         }
                         else if (key.StartsWith("$json-post-"))
                         {
-                            if (jsonPostObjects == null) jsonPostObjects = new Dictionary<string, JObject>();
+                            if (jsonPostObjects == null) jsonPostObjects = new Dictionary<string, JToken>();
                             AddJsonPartialField(jsonPostObjects, key.Substring(11), item.Value);
+                        }
+                        else if (key.StartsWith("$json-query-"))
+                        {
+                            if (jsonQueryObjects == null) jsonQueryObjects = new Dictionary<string, JToken>();
+                            AddJsonPartialField(jsonQueryObjects, key.Substring(12), item.Value);
+                        }
+                        else if (key.StartsWith("$json-query"))
+                        {
+                            throw new NotSupportedException("$json-query-paramname parameters must specified a parameter name.");
                         }
                         else if (key.StartsWith("$header-"))
                         {
@@ -2131,6 +2140,13 @@ namespace Shaman
                             options.AddPostField(item.Key, item.Value.ToString(Newtonsoft.Json.Formatting.None));
                         }
                     }
+                    if (jsonQueryObjects != null)
+                    {
+                        foreach (var item in jsonQueryObjects)
+                        {
+                            options.AddQueryParameter(item.Key, item.Value.ToString(Formatting.None));
+                        }
+                    }
                     if (jsonPostSingleJson != null)
                     {
                         options.PostString = jsonPostSingleJson.ToString(Newtonsoft.Json.Formatting.None);
@@ -2146,58 +2162,91 @@ namespace Shaman
 
         }
 
-
-
-        private static void AddJsonPartialField(Dictionary<string, JObject> dict, string path, string value)
+        private static bool IsJsonArray(ValueString key, string value)
         {
-
-            var idx = path.IndexOf('.');
-            if (idx == -1) throw new FormatException("Invalid JSON metaparameter.");
-
-            var key = path.Substring(0, idx);
-            var obj = dict.TryGetValue(key);
-            if (obj == null)
-            {
-                obj = new JObject();
-                dict[key] = obj;
-            }
-            SetJsonMetaparameter(obj, path.Substring(idx + 1), value);
-
+            if (key.EndsWith("~") && value == "--" && key.IndexOf('.', 1) == -1) return true;
+            return key.ContainsIndex(1) && key[0] == '.' && char.IsDigit(key[1]);
+        }
+        private static JToken CreateJsonContainer(ValueString key, string value)
+        {
+            if (IsJsonArray(key, value)) return new JArray();
+            return new JObject();
         }
 
-        private static void SetJsonMetaparameter(JObject obj, string path, string value)
-        {
-            var idx = path.IndexOf('.');
+        private static char[] JsonFieldSeparators = new char[] { '.', '~' };
 
-            if (idx != -1)
+        private static void AddJsonPartialField(Dictionary<string, JToken> dict, string path, string value)
+        {
+            var idx = path.IndexOfAny(JsonFieldSeparators);
+            if (idx == -1) idx = path.Length;
+            var key = path.Substring(0, idx);
+            var obj = dict.TryGetValue(key);
+            var old = obj;
+            SetJsonMetaparameter(ref obj, path.Substring(idx), value);
+            if (old != obj) dict[key] = obj;
+        }
+
+        private static void SetJsonMetaparameter(ref JToken obj, string path, string value)
+        {
+            if (path.StartsWith("..") && char.IsDigit(path[2]))
             {
-                var key = path.Substring(0, idx);
-                var sub = obj.TryGetJToken(key);
-                var subobj = sub as JObject;
-                if (subobj == null)
+                var jarr = obj as JArray;
+                if (jarr == null)
                 {
-                    if (sub == null)
-                    {
-                        subobj = new JObject();
-                        obj[key] = subobj;
-                    }
-                    else
-                    {
-                        throw new FormatException("Duplicate JSON metaparameter.");
-                    }
+                    if (obj == null || obj.Type == JTokenType.Undefined) obj = jarr = new JArray();
+                    else throw new FormatException("Inconsistent JSON metaparameter types.");
                 }
-                SetJsonMetaparameter(subobj, path.Substring(idx + 1), value);
+                var end = path.IndexOfAny(JsonFieldSeparators, 2);
+                if (end == -1) end = path.Length;
+                var index = ValueString.ParseInt32(path.SubstringValue(2, end - 2));
+                while (!jarr.ContainsIndex(index)) jarr.Add(JValue.CreateUndefined());
+                var sub = jarr[index];
+                var old = sub;
+                SetJsonMetaparameter(ref sub, path.Substring(end), value);
+                if (sub != old) jarr[index] = sub;
+            }
+            else if (path.StartsWith("."))
+            {
+                var jobj = obj as JObject;
+                if (jobj == null)
+                {
+                    if (obj == null || obj.Type == JTokenType.Undefined) obj = jobj = new JObject();
+                    else throw new FormatException("Inconsistent JSON metaparameter types.");
+                }
+                var end = path.IndexOfAny(JsonFieldSeparators, 1);
+                if (end == -1) end = path.Length;
+                var key = path.Substring(1, end - 1);
+                var sub = jobj[key];
+                var old = sub;
+                SetJsonMetaparameter(ref sub, path.Substring(end), value);
+                if (sub != old) jobj[key] = sub;
+            }
+            else if (path == "~")
+            {
+                if (value == "-") obj = new JObject();
+                else if (value == "--") obj = new JArray();
+                else obj = HttpUtils.ReadJsonToken(value);
+            }
+            else if (path == string.Empty)
+            {
+                obj = new JValue(value);
             }
             else
             {
-                var literal = path.EndsWith("~");
-                if (literal) path = path.Substring(0, path.Length - 1);
-                var sub = obj.TryGetJToken(path);
-                if (sub != null) throw new FormatException("Duplicate JSON metaparameter.");
-                JValue actualValue = literal ? (JValue)JValue.Load(HttpUtils.CreateJsonReader(value)) : new JValue(value);
-                obj[path] = actualValue;
+                throw new FormatException("Bad JSON metaparameter.");
             }
+        }
 
+        private static JToken GetPropertyOrElement(JToken obj, string key)
+        {
+            var jobj = obj as JObject;
+            return jobj != null ? jobj.TryGetJToken(key) : ((JArray)obj)[ValueString.ParseInt32(key.SubstringValue(1))];
+        }
+        private static void SetPropertyOrElement(JToken obj, string key, JToken value)
+        {
+            var jobj = obj as JObject;
+            if (jobj != null) jobj[key] = value;
+            else ((JArray)obj)[ValueString.ParseInt32(key.SubstringValue(1))] = value;
         }
 
 #endif
