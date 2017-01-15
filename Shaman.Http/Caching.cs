@@ -483,7 +483,8 @@ namespace Shaman.Runtime
             }
 
             sb.Append(https ? "₰" : "ℓ");
-            sb.Append(url.AbsolutePath.Substring(1));
+            var abspath = url.AbsolutePath;
+            sb.Append(abspath, 1, abspath.Length - 1);
             sb.Append((string)url.Query);
             sb.Append((string)url.Fragment);
             if (sb.Length <= CacheFileNameMaxLength)
