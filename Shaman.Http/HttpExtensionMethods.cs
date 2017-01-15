@@ -2285,7 +2285,12 @@ namespace Shaman
 
 
         [StaticFieldCategory(StaticFieldCategory.Stable)]
-        internal static Dictionary<string, string> mimeToExtension;
+        internal 
+#if !SALTARELLE
+        volatile 
+#endif
+
+        static Dictionary<string, string> mimeToExtension;
         [StaticFieldCategory(StaticFieldCategory.Stable)]
         internal static Dictionary<string, string> extensionToMime;
         internal static void InitializeMimesDictionary()
