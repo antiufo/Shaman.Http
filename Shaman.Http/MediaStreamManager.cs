@@ -302,8 +302,7 @@ namespace Shaman.Runtime
 
         private void OnNewDataAvailable()
         {
-            if (NewDataAvailable != null)
-                NewDataAvailable(this, EventArgs.Empty);
+            NewDataAvailable?.Invoke(this, EventArgs.Empty);
         }
 
 
