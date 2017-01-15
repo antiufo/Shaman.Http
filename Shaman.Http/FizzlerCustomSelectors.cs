@@ -96,10 +96,8 @@ namespace Shaman.Runtime
             token = JSON5.parse(source.Substring(startIndex));
             //token = System.Serialization.Json.Parse(source.Substring(startIndex));
 #else
-            using (var jsonReader = HttpUtils.CreateJsonReader(new PartialStringReader(source, startIndex)))
-            {
-                token = JToken.Load(jsonReader);
-            }
+            token = HttpUtils.ReadJsonToken(source, startIndex);
+            
 #endif
             lastConvertedJsonHtml = JsonToHtml(null, token, CreateDocument(parentDocument), false);
             // base url doesn't probably apply here.

@@ -1999,7 +1999,7 @@ namespace Shaman
         public async static Task<T> GetJsonAsync<T>(this LazyUri url, WebRequestOptions options = null)
         {
             var str = await url.GetStringAsync(options);
-            if (typeof(JToken).GetTypeInfo().IsAssignableFrom(typeof(T).GetTypeInfo())) return (T)(object)JToken.Load(HttpUtils.CreateJsonReader(new StringReader(str)));
+            if (typeof(JToken).GetTypeInfo().IsAssignableFrom(typeof(T).GetTypeInfo())) return (T)(object)HttpUtils.ReadJsonToken(str);
             return JsonConvert.DeserializeObject<T>(str);
         }
 
