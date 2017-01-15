@@ -238,7 +238,7 @@ namespace Shaman
                         }
                     }
                     var html = await ParseHtmlAsync(info, noredir ? null : redirectLocation, cacheData, options, metaParameters, url);
-                    if (cacheData != null) cacheData.PageUrl = html?.OwnerDocument.PageUrl != null ? new LazyUri(html.OwnerDocument.PageUrl) : null;
+                    if (cacheData != null) cacheData.PageUrl = html?.OwnerDocument.GetLazyPageUrl() != null ? html.OwnerDocument.GetLazyPageUrl() : null;
                     return new GetHtmlOrJsonAsyncResponse()
                     {
                         CacheData = cacheData,
@@ -360,7 +360,7 @@ namespace Shaman
                 var contentType = (metaParameters != null ? metaParameters.TryGetValue("$content-type") : null) ??
 #if WEBCLIENT
                     HttpUtils.GetMimeFromContentType(content.Headers["Content-Type"]);
-#else 
+#else
                     (content.Headers.ContentType != null ? content.Headers.ContentType.MediaType : null);
 #endif
                 var jsonToken = metaParameters != null ? metaParameters.TryGetValue("$json-token") : null;
@@ -698,7 +698,7 @@ namespace Shaman
                             Caching.SaveCache(cachePath, new WebCache()
                             {
                                 Url = lazyurl,
-                                PageUrl = node.OwnerDocument.PageUrl != null ? new LazyUri(node.OwnerDocument.PageUrl) : null,
+                                PageUrl = node.OwnerDocument.GetLazyPageUrl(),
                                 Result = node.OwnerDocument.WriteTo(),
                                 JsExecutionResults = JsonConvert.SerializeObject(r, Formatting.None)
                             });
@@ -888,7 +888,7 @@ namespace Shaman
         private async static Task<HtmlNode> GetHtmlNodeAsyncImpl(this LazyUri url, WebRequestOptions preprocessedOptions,
 #if NET35
         IDictionary<string, string> metaParameters,
-#else 
+#else
         IReadOnlyDictionary<string, string> metaParameters,
 #endif
         bool hasExtraOptions, 
@@ -1183,11 +1183,12 @@ namespace Shaman
 
             return default(HttpStatusCode);
         }
+        
 
 #endif
 
 
-        public static bool IsHostedOn(this Uri url, string baseHost)
+                    public static bool IsHostedOn(this Uri url, string baseHost)
         {
 
             return IsHostedOn(url.Host, baseHost);
@@ -1452,7 +1453,7 @@ namespace Shaman
                     if (name.StartsWith("data-") && !(str.StartsWith("http://") || str.StartsWith("https://") || str.StartsWith("/"))) continue;
                     try
                     {
-                        u = HttpUtils.GetAbsoluteUri(finalNode.OwnerDocument.BaseUrl, str);
+                        u = HttpUtils.GetAbsoluteUri(finalNode.OwnerDocument.GetLazyBaseUrl(), str);
                         if (name != "src")
                         {
                             var path = u.AbsolutePath.ToLowerFast();
@@ -1533,13 +1534,13 @@ namespace Shaman
 
         public static void MakeAbsoluteUrls(this HtmlNode node)
         {
-            MakeAbsoluteUrlsInternal(node, node.OwnerDocument.BaseUrl);
+            MakeAbsoluteUrlsInternal(node, node.OwnerDocument.GetLazyBaseUrl());
         }
 
 
 
 
-        internal static void MakeAbsoluteUrlsInternal(this HtmlNode node, Uri baseUrl)
+        internal static void MakeAbsoluteUrlsInternal(this HtmlNode node, LazyUri baseUrl)
         {
             try
             {
@@ -1566,7 +1567,7 @@ namespace Shaman
         public static Uri TryGetLinkUrl(this HtmlNode node)
         {
             if (node == null) throw new ArgumentNullException();
-            var baseUrl = node.OwnerDocument.BaseUrl;
+            var baseUrl = node.OwnerDocument.GetLazyBaseUrl();
             var href = node.GetAttributeValue("href");
             if (href != null)
             {
@@ -1582,7 +1583,7 @@ namespace Shaman
             {
                 var t = node.GetText();
                 if (t == null) return null;
-                return HttpUtils.GetAbsoluteUri(node.OwnerDocument.PageUrl, t);
+                return HttpUtils.GetAbsoluteUri(node.OwnerDocument.GetLazyPageUrl(), t);
             }
             return null;
         }
@@ -2117,7 +2118,7 @@ namespace Shaman
                             if (name == "User-Agent") options.UserAgent = item.Value;
                             else if (name == "Referer")
                             {
-                                options.Referrer = HttpUtils.GetAbsoluteUriAsString(url.PathConsistentUrl, item.Value).AsUri();
+                                options.Referrer = HttpUtils.GetAbsoluteUriAsString(url, item.Value).AsUri();
                             }
                             else options.AddHeader(name, item.Value);
                         }
@@ -2261,6 +2262,58 @@ namespace Shaman
         }
 #endif
 
+
+        public static LazyUri GetLazyPageUrl(this HtmlDocument doc)
+        {
+            if (doc._pageUrlCustom != null) return (LazyUri)doc._pageUrlCustom;
+            var m = doc.PageUrl;
+            if (m != null)
+            {
+                var z = new LazyUri(m);
+                doc._pageUrlCustom = z;
+                return z;
+            }
+            return null;
+        }
+        public static LazyUri GetLazyBaseUrl(this HtmlDocument doc)
+        {
+            if (doc._baseUrlCustom != null) return (LazyUri)doc._baseUrlCustom;
+            LazyUri _baseUrl = null;
+            var b = doc.DocumentNode.GetAttributeValue("base-url");
+            if (b == null)
+            {
+                foreach (var basenode in doc.DocumentNode.DescendantsAndSelf("base"))
+                {
+                    var h = basenode.GetAttributeValue("href");
+                    if (h != null)
+                    {
+                        try
+                        {
+                            _baseUrl = new LazyUri(HttpUtils.GetAbsoluteUrlInternal(doc.GetLazyPageUrl(), h));
+                            b = _baseUrl.AbsoluteUri;
+                        }
+                        catch
+                        {
+                        }
+                        break;
+                    }
+                }
+                if (b == null)
+                {
+                    _baseUrl = doc.GetLazyPageUrl();
+                    b = _baseUrl != null ? _baseUrl.AbsoluteUri : string.Empty;
+                }
+                doc.DocumentNode.SetAttributeValue("base-url", b);
+            }
+            else
+            {
+                if (string.IsNullOrEmpty(b)) return null;
+                _baseUrl = new LazyUri(b);
+            }
+            doc._baseUrlCustom = _baseUrl;
+            return _baseUrl;
+        }
+
         public static bool IsJson(this HtmlDocument document)
         {
             return document.DocumentNode.GetAttributeValue("awdee-converted-json") == "1";
@@ -2275,11 +2328,13 @@ namespace Shaman
         public static void SetPageUrl(this HtmlDocument document, Uri url)
         {
             document.PageUrl = url;
+            document._pageUrlCustom = null;
         }
 #if !SALTARELLE
         public static void SetPageUrl(this HtmlDocument document, LazyUri url)
         {
-            document.PageUrl = url.Url;
+            document.ClearPageUrlCache();
+            document._pageUrlCustom = url;
         }
 #endif
 

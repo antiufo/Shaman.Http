@@ -40,6 +40,50 @@ namespace Shaman
             return GetAbsoluteUriAsString(baseUrl, relative).AsUri();
         }
 
+#if !SALTARELLE
+
+
+        public static LazyUri GetAbsoluteLazyUri(LazyUri baseUrl, string relative)
+        {
+            return GetAbsoluteUriAsString(baseUrl, relative).AsLazyUri();
+        }
+        public static Uri GetAbsoluteUri(LazyUri baseUrl, string relative)
+        {
+            return GetAbsoluteUriAsString(baseUrl, relative).AsUri();
+        }
+        public static string GetAbsoluteUriAsString(LazyUri baseUrl, string relative)
+        {
+            try
+            {
+                if (relative == null) return null;
+                if (relative.StartsWith("//"))
+                {
+                    if (baseUrl == null || baseUrl.Scheme != "http")
+                        return "https:" + relative;
+                    else
+                        return "http:" + relative;
+                }
+
+                if (relative.StartsWith("http:") || relative.StartsWith("https:"))
+                {
+                    if (relative.IndexOf('/', 8) == -1) return relative + "/";
+                    return relative;
+                }
+                var url = GetAbsoluteUrlInternal(baseUrl, relative);
+                if (url == null) return null;
+                return url.AbsoluteUri;
+            }
+            catch (FormatException)
+            {
+#if !SMALL_LIB_AWDEE
+                LogNonCriticalException(ex, baseUrl, relative);
+#endif
+                return relative;
+            }
+        }
+
+#endif
+
         public static string GetAbsoluteUriAsString(Uri baseUrl, string relative)
         {
             try
@@ -59,7 +103,7 @@ namespace Shaman
                     if (relative.IndexOf('/', 8) == -1) return relative + "/";
                     return relative;
                 }
-                var url = GetAbsoluteUrlInternal(baseUrl, relative);
+                var url = GetAbsoluteUrlInternal(baseUrl != null ? new LazyUri(baseUrl) : null, relative);
                 if (url == null) return null;
                 return url.AbsoluteUri;
             }
@@ -138,7 +182,7 @@ namespace Shaman
         }
 #endif
 
-        internal static Uri GetAbsoluteUrlInternal(Uri baseUrl, string relative)
+        internal static Uri GetAbsoluteUrlInternal(LazyUri baseUrl, string relative)
         {
 
             if (relative.StartsWith("http:") || relative.StartsWith("https:"))
@@ -158,7 +202,8 @@ namespace Shaman
 
             if (baseUrl == null) throw new ArgumentException("Cannot create an absolute Uri without a base Uri.");
 
-            return new Uri(baseUrl, relative);
+            if(!relative.StartsWith("#") && !relative.StartsWith("?")) return new Uri(baseUrl.PathConsistentUrl, relative);
+            return new Uri(baseUrl.Url, relative);
 
         }
 
@@ -401,6 +446,7 @@ namespace Shaman
             }
         }
 #if !SALTARELLE
+#if false
         internal static void AppendParameters(IEnumerable<KeyValuePair<string, string>> parameters, NakedStringBuilder sb, char initialChar)
         {
             var first = initialChar == '\0' ? true : sb.IndexOf(initialChar) == -1;
@@ -429,7 +475,7 @@ namespace Shaman
                 sb.AppendUriEncoded(item.Value);
             }
         }
-
+#endif
 
 
 
@@ -521,7 +567,7 @@ namespace Shaman
         {
             return Uri.UnescapeDataString(stringToUnescape.Replace('+', ' '));
         }
-
+#endif
 
 
         internal static void MakeAbsoluteAttribute(HtmlNode node, string attribute, Uri pageUrl)
@@ -530,11 +576,19 @@ namespace Shaman
             if (value == null) return;
 
             node.SetAttributeValue(attribute, GetAbsoluteUriAsString(pageUrl, value));
-
-
         }
 
 #if !SALTARELLE
+
+
+        internal static void MakeAbsoluteAttribute(HtmlNode node, string attribute, LazyUri pageUrl)
+        {
+            var value = node.GetAttributeValue(attribute);
+            if (value == null) return;
+            if (string.IsNullOrEmpty(value) || value == "#") return;
+            node.SetAttributeValue(attribute, GetAbsoluteUriAsString(pageUrl, value));
+        }
+
 
         public static Task<HtmlNode> ClickFormButtonAsync(this HtmlNode button,
 #if NET35
@@ -609,7 +663,7 @@ namespace Shaman
 
 
 
-            var url = new LazyUri(GetAbsoluteUriAsString(form.OwnerDocument.BaseUrl, (a4joptions != null ? a4joptions.Value<string>("actionUrl") : null) ?? form.GetAttributeValue("action")));
+            var url = new LazyUri(GetAbsoluteUriAsString(form.OwnerDocument.GetLazyBaseUrl(), (a4joptions != null ? a4joptions.Value<string>("actionUrl") : null) ?? form.GetAttributeValue("action")));
 
 
             if (options != null)
@@ -869,8 +923,7 @@ namespace Shaman
 
         public static bool UrisEqual(LazyUri a, LazyUri b)
         {
-            if (a == null || b == null) return (a == null) == (b == null);
-            return a.AbsoluteUri == b.AbsoluteUri;
+            return LazyUri.UrisEqual(a, b);
         }
 #endif
 

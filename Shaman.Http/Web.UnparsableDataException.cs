@@ -33,7 +33,7 @@ namespace Xamasoft
             string attribute = null,
             string regex = null,
             string userQuery = null,
-            Uri url = null,
+            LazyUri url = null,
             string message = null
             )
             : base(message, innerException)
@@ -55,7 +55,7 @@ namespace Xamasoft
             set
             {
                 SourceData = value != null ? value.WriteTo() : null;
-                Url = value.OwnerDocument.PageUrl;
+                Url = value.OwnerDocument.GetLazyPageUrl();
             }
         }
 
@@ -67,7 +67,7 @@ namespace Xamasoft
         public string Attribute { get; internal set; }
         public string Regex { get; internal set; }
         public string UserQuery { get; internal set; }
-        public Uri Url { get; internal set; }
+        public LazyUri Url { get; internal set; }
 
 
 

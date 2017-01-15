@@ -121,7 +121,7 @@ namespace Shaman.Runtime
             var doc = new HtmlDocument();
             if (parentDocument != null)
             {
-                var page = parentDocument.PageUrl;
+                var page = parentDocument.GetLazyPageUrl();
                 if (page != null) doc.SetPageUrl(page);
                 var date = parentDocument.DocumentNode.GetAttributeValue("date-retrieved");
                 if (date != null) doc.DocumentNode.SetAttributeValue("date-retrieved", date);
@@ -403,8 +403,8 @@ namespace Shaman.Runtime
                     if (n == null) return Enumerable.Empty<HtmlNode>();
                     var u = n.TryGetValue();
                     if (u == null) return Enumerable.Empty<HtmlNode>();
-                    model = HttpUtils.GetAbsoluteUriAsString(n.OwnerDocument.PageUrl, model);
-                    return new[] { WrapText(n, model.Replace("@", HttpUtils.EscapeDataString(u))) };
+                    var m = HttpUtils.GetAbsoluteUriAsString(n.OwnerDocument.GetLazyPageUrl(), model);
+                    return new[] { WrapText(n, m.Replace("@", HttpUtils.EscapeDataString(u))) };
                 };
             });
 
@@ -885,7 +885,7 @@ namespace Shaman.Runtime
 
                         if (link == null || (link.Scheme != HttpUtils.UriSchemeHttp && link.Scheme != HttpUtils.UriSchemeHttps)) return false;
 
-                        var host = x.OwnerDocument.PageUrl.Host;
+                        var host = x.OwnerDocument.GetLazyPageUrl().Host;
 
                         if (!link.IsHostedOn(host)) return false;
 #if SALTARELLE
@@ -965,7 +965,7 @@ namespace Shaman.Runtime
 
                         if (!link.AbsolutePath.StartsWith(path)) return false;
 
-                        var host = x.OwnerDocument.PageUrl.Host;
+                        var host = x.OwnerDocument.GetLazyPageUrl().Host;
                         if (!link.IsHostedOn(host)) return false;
                         return true;
                     });
@@ -1022,7 +1022,7 @@ namespace Shaman.Runtime
                         }
 
                         if (link == null || (link.Scheme != HttpUtils.UriSchemeHttp && link.Scheme != HttpUtils.UriSchemeHttps)) return false;
-                        var host = x.OwnerDocument.PageUrl.Host;
+                        var host = x.OwnerDocument.GetLazyPageUrl().Host;
                         if (!link.IsHostedOn(host)) return false;
                         return true;
 

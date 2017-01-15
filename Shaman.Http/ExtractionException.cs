@@ -24,13 +24,13 @@ namespace Shaman.Runtime
         internal bool IsMissingKeyError;
 
 #if STANDALONE
-        public ExtractionException(HtmlNode node = null, Exception innerException = null, string sourceData = null, string beginString = null, string endString = null, string nodeQuery = null, string attribute = null, string regex = null, string userQuery = null, Uri url = null, string message = null)
+        public ExtractionException(HtmlNode node = null, Exception innerException = null, string sourceData = null, string beginString = null, string endString = null, string nodeQuery = null, string attribute = null, string regex = null, string userQuery = null, LazyUri url = null, string message = null)
             : base(innerException: innerException, sourceData: sourceData, beginString: beginString, endString: endString, nodeQuery: nodeQuery, attribute: attribute, regex: regex, userQuery: userQuery, url: url, message: message)
         {
             this.Node = node;
         }
 #else
-        public ExtractionException(HtmlNode node = null, Entity obj = null, ExtractionAttribute extraction = null, Exception innerException = null, string sourceData = null, string beginString = null, string endString = null, string nodeQuery = null, string attribute = null, string regex = null, string userQuery = null, Uri url = null, string message = null, ListExtractionAttribute listExtraction = null)
+        public ExtractionException(HtmlNode node = null, Entity obj = null, ExtractionAttribute extraction = null, Exception innerException = null, string sourceData = null, string beginString = null, string endString = null, string nodeQuery = null, string attribute = null, string regex = null, string userQuery = null, LazyUri url = null, string message = null, ListExtractionAttribute listExtraction = null)
             : base(innerException: innerException, sourceData: sourceData, beginString: beginString, endString: endString, nodeQuery: nodeQuery, attribute: attribute, regex: regex, userQuery: userQuery, url: url, message: message)
         {
             this.Node = node;

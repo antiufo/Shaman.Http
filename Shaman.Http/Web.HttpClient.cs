@@ -47,6 +47,9 @@ ExtensionMethods
 #endif
     {
 
+        [Configuration]
+        private static int Configuration_MinNumberOfFragmentParametersForAdHocRequestUri = 10;
+
         internal class HttpResponseInfo
         {
             public HttpResponseMessage Response;
@@ -175,20 +178,34 @@ ExtensionMethods
         )
         {
             if (!forceSameUrl) url = MaybeAddAdditionalQueryParameters(url, options);
+
+            var pathAndQueryConsistentUrl = url.GetPathAndQueryConsistentUrlIfCached();
+            if (pathAndQueryConsistentUrl == null)
+            {
+                if (
+#if NET35
+                    url.FragmentParameters.Count() 
+#else
+                    url.FragmentParameters.Count
+#endif
+                    >= Configuration_MinNumberOfFragmentParametersForAdHocRequestUri) pathAndQueryConsistentUrl = url.GetPathAndQueryAsUri();
+                else pathAndQueryConsistentUrl = url.PathAndQueryConsistentUrl;
+            }
+
 #if WEBCLIENT
-            var message = (HttpWebRequest)WebRequest.Create(url.PathAndQueryConsistentUrl);
+            var message = (HttpWebRequest)WebRequest.Create(pathAndQueryConsistentUrl);
             message.CachePolicy = new System.Net.Cache.RequestCachePolicy(System.Net.Cache.RequestCacheLevel.NoCacheNoStore);
             message.AutomaticDecompression = DecompressionMethods.Deflate | DecompressionMethods.Deflate;
             requestContent = null;
 #else
             var message = new HttpRequestMessage();
-            message.RequestUri = url.PathAndQueryConsistentUrl;
+            message.RequestUri = pathAndQueryConsistentUrl;
 #endif
             if (options != null)
             {
                 if (redirectionIndex != 0) message.Method = HttpMethod.Get;
                 else if (options._method != null)
-#if WEBCLIENT 
+#if WEBCLIENT
                     message.Method = options._method;
 #else
                     message.Method = new HttpMethod(options._method);
