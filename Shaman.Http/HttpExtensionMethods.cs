@@ -287,15 +287,15 @@ namespace Shaman
         }
 #endif
 
-        internal static void AppendUriEncoded(this NakedStringBuilder sb, string text)
-        {
-#if DESKTOP
-            sb.Data = DirectUriEscapeChar.EscapeString(text, 0, text.Length, sb.Data, ref sb.Length, false, DirectUriEscapeChar.c_DummyChar, DirectUriEscapeChar.c_DummyChar, DirectUriEscapeChar.c_DummyChar);
-#else
-            var s = Uri.EscapeDataString(text);
-            sb.Append(text);
-#endif
-        }
+//        internal static void AppendUriEncoded(this NakedStringBuilder sb, string text)
+//        {
+//#if DESKTOP
+//            sb.Data = DirectUriEscapeChar.EscapeString(text, 0, text.Length, sb.Data, ref sb.Length, false, DirectUriEscapeChar.c_DummyChar, DirectUriEscapeChar.c_DummyChar, DirectUriEscapeChar.c_DummyChar);
+//#else
+//            var s = Uri.EscapeDataString(text);
+//            sb.Append(text);
+//#endif
+//        }
      
 
 
