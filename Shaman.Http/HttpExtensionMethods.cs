@@ -395,9 +395,8 @@ namespace Shaman
 #endif
 
                         lazy = new LazyTextReader(stream, initialEncoding);
-
-
-
+                        if (!plainText && lazy.ContainsIndex(3) && lazy[0] == '%' && lazy[1] == 'P' && lazy[2] == 'D' && lazy[3] == 'F')
+                            throw new NotSupportedResponseException("application/pdf", url);
                         if (!looksLikeHtml && !plainText)
                         {
                             looksLikeHtml = HttpUtils.LooksLikeHtml(lazy);
