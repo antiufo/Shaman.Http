@@ -534,12 +534,7 @@ namespace Shaman
             {
                 var formname = onclick.Capture(@"A4J\.AJAX\.Submit\('(.*?)'");
                 form = button.OwnerDocument.DocumentNode.DescendantsAndSelf().First(x => x.Id == formname);
-                using (var reader = new FizzlerCustomSelectors.PartialStringReader(onclick, onclick.IndexOf(",{", onclick.IndexOf(a4jPrefix)) + 1))
-                using (var jr = CreateJsonReader(reader))
-                {
-                    a4joptions = (JObject)JToken.ReadFrom(jr);
-                }
-
+                a4joptions = (JObject)ReadJsonToken(onclick, onclick.IndexOf(",{", onclick.IndexOf(a4jPrefix)) + 1);
             }
             else
             {
@@ -774,15 +769,12 @@ namespace Shaman
             if (href != null && href.StartsWith(javascriptDoPostBack))
             {
                 var modified = "[" + href.Substring(javascriptDoPostBack.Length, href.Length - javascriptDoPostBack.Length - 1) + "]";
-                using (var reader = new StringReader(modified))
-                using (var jr = CreateJsonReader(reader))
-                {
-                    var arr = (JArray)JToken.Load(jr);
+                var arr = (JArray)ReadJsonToken(modified);
+                
 
-
-                    add("__EVENTTARGET", arr[0].Value<string>());
-                    add("__EVENTARGUMENT", arr[1].Value<string>());
-                }
+                add("__EVENTTARGET", arr[0].Value<string>());
+                add("__EVENTARGUMENT", arr[1].Value<string>());
+                
                 name = null;
             }
             else if (onclick != null)
