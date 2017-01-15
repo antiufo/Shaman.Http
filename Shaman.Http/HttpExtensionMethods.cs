@@ -1634,7 +1634,6 @@ namespace Shaman
         }
 
 
-#if !STANDALONE
         public static string GetText(HtmlTextNode node)
         {
             var internalText = node.Text;
@@ -1710,7 +1709,6 @@ namespace Shaman
         }
 
 
-#endif
 
 
         private static bool IsWhiteSpace(char ch)
