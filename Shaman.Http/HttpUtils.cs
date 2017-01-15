@@ -1014,6 +1014,67 @@ namespace Shaman
             return node;
         }
 
+
+
+        public static JToken ReadJsonToken(string source)
+        {
+            return ReadJsonToken(source, 0);
+        }
+
+
+        private static bool jsonXescapeRecentlyHappened;
+
+        public static JToken ReadJsonToken(string source, int startIndex)
+        {
+
+            if (!jsonXescapeRecentlyHappened || source.IndexOf(@"\x", startIndex) == -1)
+            {
+                using (var jsonReader = CreateJsonReader(new FizzlerCustomSelectors.PartialStringReader(source, startIndex)))
+                {
+                    try
+                    {
+                        return JToken.Load(jsonReader);
+                    }
+                    catch (Newtonsoft.Json.JsonReaderException ex) when(ex.Message.StartsWith(@"Bad JSON escape sequence: \x"))
+                    {
+                    }
+                }
+            }
+
+            var sb = ReseekableStringBuilder.AcquirePooledStringBuilder();
+
+            for (int i = startIndex; i < source.Length; i++)
+            {
+                var ch = source[i];
+                if (ch == 'x' && i != startIndex && source[i - 1] == '\\' && IsPreceededByOddNumberOfBackslashes(source, i, startIndex))
+                {
+                    sb.Append('u');
+                    sb.Append('0');
+                    sb.Append('0');
+                }
+                else
+                {
+                    sb.Append(ch);
+                }
+            }
+
+            var fixedjson = ReseekableStringBuilder.GetValueAndRelease(sb);
+            using (var jsonReader = CreateJsonReader(fixedjson))
+            {
+                return JToken.Load(jsonReader);
+            }
+        }
+
+        private static bool IsPreceededByOddNumberOfBackslashes(string source, int pos, int startIndex)
+        {
+            int i = pos - 1;
+            for (; i >= startIndex; i--)
+            {
+                if (source[i] != '\\') break;
+            }
+            return (pos - i) % 2 == 0;
+
+        }
     }
 
 
