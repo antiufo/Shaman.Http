@@ -16,6 +16,9 @@ using StringBuilder = System.Text.Saltarelle.StringBuilder;
 using JToken = System.Object;
 using JObject = System.Object;
 using JArray = System.Array;
+using HtmlNodeHashSet = System.Collections.Generic.List<Shaman.Dom.HtmlNode>;
+#else
+using HtmlNodeHashSet = System.Collections.Generic.HashSet<Shaman.Dom.HtmlNode>;
 #endif
 #if !STANDALONE
 using HttpUtils = Shaman.Utils;
@@ -1443,6 +1446,46 @@ namespace Shaman.Runtime
                 };
 
             });
+            
+
+            Parser.RegisterCustomSelector<HtmlNode, Selector<HtmlNode>>("without-subnodes", condition =>
+            {
+                return nodes =>
+                {
+                    var stack = new List<HtmlNode>();
+                    return nodes.Select(x =>
+                    {
+                        var excluded = condition(new[] { x }).ToList();
+                        if (excluded.Count == 0) return x;
+                        var torebuild = new HtmlNodeHashSet(excluded);
+                        stack.Clear();
+                        stack.Add(x);
+                        AddNodesToRemove(stack, torebuild);
+                        stack.Clear();
+
+                        return CloneWithout(x, torebuild, excluded);
+                    });
+                };
+            });
+
+            Parser.RegisterCustomSelector<HtmlNode>("reparse-comment", () =>
+            {
+                return nodes =>
+                {
+                    return nodes.Select(x =>
+                    {
+                        var comment = (HtmlCommentNode) x.ChildNodes.FirstOrDefault(y => y.NodeType == HtmlNodeType.Comment);
+                        if (comment == null) return null;
+                        var doc = CreateDocument(x.OwnerDocument);
+                        var c = comment.Comment.AsValueString();
+                        c = c.Substring(4);
+                        c = c.Substring(0, c.Length - 3);
+                        c = c.Trim();
+                        return ReparseHtml(doc, c.ToClrString(), x.OwnerDocument);
+                    }).WhereNotNull();
+                };
+            });
+        }
 
         }
         
