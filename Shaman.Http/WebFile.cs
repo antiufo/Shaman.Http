@@ -365,16 +365,27 @@ namespace Shaman.Types
             }
         }
 
-        [RestrictedAccess]
         public Task<string> DownloadAsync(string destinationFolder, string unsanitizedFileName, FileOverwriteMode mode)
         {
             return DownloadAsync(destinationFolder, unsanitizedFileName, mode, CancellationToken.None, null);
         }
 
-
-        [RestrictedAccess]
         public async Task<string> DownloadAsync(string destinationFolder, string unsanitizedFileName, FileOverwriteMode mode, CancellationToken ct, IProgress<DataTransferProgress> progress)
         {
+#if !STANDALONE
+            if (Utils.PreventLocalFileAccess)
+            {
+                if (Path.IsPathRooted(destinationFolder)) throw new NotSupportedException("Downloading to absolute locations is not supported in this configuration.");
+
+                var verifier = Runtime.Compiler.Verifier.Instance;
+                if (verifier == null || verifier.DatabasePath == null) throw new NotSupportedException("Downloading files requires a deployed connector.");
+                
+                var downloads = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(verifier.DatabasePath), "Downloads"));
+                destinationFolder = Path.GetFullPath( Path.Combine(downloads, destinationFolder));
+                if (!destinationFolder.StartsWith(downloads)) throw new NotSupportedException("Downloading to absolute locations is not supported in this configuration.");
+
+            }
+#endif
             Directory.CreateDirectory(destinationFolder);
             string path;
             if (mode == FileOverwriteMode.Rename)
