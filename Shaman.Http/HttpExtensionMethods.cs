@@ -987,7 +987,7 @@ namespace Shaman
             if (siteInfo != null)
             {
                 siteIdentifier = siteInfo.SiteIdentifier;
-                credentials = ObjectManager.GetCredentials(siteIdentifier);
+                credentials = await ObjectManager.GetCredentialsAsync(siteIdentifier);
 
                 if (credentials.LastCookies != null)
                 {
