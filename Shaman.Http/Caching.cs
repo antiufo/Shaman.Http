@@ -101,19 +101,35 @@ namespace Shaman.Runtime
             };
         }
 
-        internal static WebCache TryReadCacheFile(string path, bool onlyIfFailed = false)
+        internal static WebCache TryReadCacheFile(string path, bool onlyIfFailed = false, bool fromFileSystem = false)
         {
 
             Stream stream;
-            if (!BlobStore.Exists(path))
-                return null;
-            try
+            if (fromFileSystem)
             {
-                stream = BlobStore.OpenRead(path);
+                if (!File.Exists(path))
+                    return null;
+                try
+                {
+                    stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Delete | FileShare.Read);
+                }
+                catch (FileNotFoundException)
+                {
+                    return null;
+                }
             }
-            catch (FileNotFoundException)
+            else
             {
-                return null;
+                if (!BlobStore.Exists(path))
+                    return null;
+                try
+                {
+                    stream = BlobStore.OpenRead(path);
+                }
+                catch (FileNotFoundException)
+                {
+                    return null;
+                }
             }
 
             Sanity.AssertFastReadByte(stream);
