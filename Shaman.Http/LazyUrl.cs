@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 #if !STANDALONE
 using HttpUtils = Shaman.Utils;
 #endif
+using NakedStringBuilder = System.Text.StringBuilder;
 namespace Shaman
 {
     [JsonConverter(typeof(LazyUriConverter))]
@@ -20,7 +21,21 @@ namespace Shaman
         private int nextFragmentParameterToAdd;
         private string unparsedUrl;
 
-        public string Fragment { get { return Url.Fragment; } }
+        public string Fragment
+        {
+            get
+            {
+
+                var absurl = TryGetAbsoluteUriIfCached();
+                if (absurl != null && !parsedUnparsedOutOfSync) return url.Fragment;
+
+                absurl = AbsoluteUri;
+                var hash = absurl.IndexOf('#');
+                if (hash == -1) return string.Empty;
+
+                return absurl.Substring(hash);
+            }
+        }
 
         public string PathAndQuery { get { return PathAndQueryConsistentUrl.PathAndQuery; } }
         public string Path { get { return PathAndQueryConsistentUrl.AbsolutePath; } }
@@ -56,9 +71,30 @@ namespace Shaman
         {
             this.url = url;
         }
+
+        [Configuration]
+        private static int Configuration_FastParsingThreshold = 600;
+        [Configuration]
+        private static int Configuration_FastParsingMinSavings = 300;
+
+        private static char[] Separators = new[] { '#', '?' };
         public LazyUri(string url)
         {
+            if (url.Length > Configuration_FastParsingThreshold)
+            {
+                var idx = url.IndexOfAny(Separators);
+                if (idx != -1 && url.Length - idx > Configuration_FastParsingMinSavings)
+                {
+                    this.url = new Uri(url.Substring(0, idx));
+                    this.parsedUnparsedOutOfSync = true;
+                    this.unparsedUrl = url;
+                    return;
+                }
+            }
+            
             this.url = url.AsUri();
+            
+
         }
 
         public Uri PathConsistentUrl
@@ -73,9 +109,24 @@ namespace Shaman
         {
             get
             {
-                if (parsedUnparsedOutOfSync || (queryParameters != null && queryParameters.Count != nextQueryParameterToAdd)) return Url;
-                return url;
+                var u = GetPathAndQueryConsistentUrlIfCached();
+                return u ?? Url;
             }
+        }
+
+
+
+        internal Uri GetPathAndQueryConsistentUrlIfCached()
+        {
+            if (parsedUnparsedOutOfSync || (queryParameters != null && queryParameters.Count != nextQueryParameterToAdd)) return null;
+            return url;
+        }
+        internal Uri GetPathAndQueryAsUri()
+        {
+            var absurl = AbsoluteUri;
+            var hash = absurl.IndexOf('#');
+            if (hash == -1) return Url;
+            return absurl.Substring(0, hash).AsUri();
         }
 
         public Uri Url
@@ -115,11 +166,24 @@ namespace Shaman
                         unparsedUrl = s;
                         return s;
                     }
+                    if (parsedUnparsedOutOfSync) return unparsedUrl;
                     return url.AbsoluteUri;
                 }
 
             }
         }
+
+
+        private string TryGetAbsoluteUriIfCached()
+        {
+            if (fragmentParameters != null && nextFragmentParameterToAdd != fragmentParameters.Count) return null;
+            if (queryParameters != null && nextQueryParameterToAdd != queryParameters.Count) return null;
+
+            if (unparsedUrl != null) return unparsedUrl;
+            if (url != null) return url.AbsoluteUri;
+            return null;
+        }
+
         private bool parsedUnparsedOutOfSync;
         internal string GetUrlStringIfNew()
         {
@@ -136,7 +200,8 @@ namespace Shaman
                 }
                 fragmentsToReapply = this.url != null ? this.url.Fragment : null;
                 var initial = !string.IsNullOrEmpty(fragmentsToReapply) ? url.GetLeftPart_UriPartial_Query() : url.AbsoluteUri;
-                sb = new NakedStringBuilder(initial, CalculateApproxLength(initial));
+                sb = ReseekableStringBuilder.AcquirePooledStringBuilder();
+                sb.Append(initial);
 
                 HttpUtils.AppendParameters(queryParameters.Skip(nextQueryParameterToAdd), sb, '?');
                 nextQueryParameterToAdd = queryParameters.Count;
@@ -152,7 +217,8 @@ namespace Shaman
                 else if (sb == null)
                 {
                     var initial = url.AbsoluteUri;
-                    sb = new NakedStringBuilder(initial, CalculateApproxLength(initial));
+                    sb = ReseekableStringBuilder.AcquirePooledStringBuilder();
+                    sb.Append(initial);
                 }
                 HttpUtils.AppendParameters(fragmentParameters.Skip(nextFragmentParameterToAdd), sb, '#');
                 nextFragmentParameterToAdd = fragmentParameters.Count;
@@ -161,7 +227,7 @@ namespace Shaman
             {
                 sb.Append(fragmentsToReapply);
             }
-            return sb != null ? sb.ToString() : null;
+            return sb != null ? ReseekableStringBuilder.GetValueAndRelease(sb) : null;
         }
 
         private int CalculateApproxLength(string initial)
@@ -208,6 +274,19 @@ namespace Shaman
 
             if (queryParameters == null)
             {
+
+                if (parsedUnparsedOutOfSync)
+                {
+                    var q = unparsedUrl.IndexOf('?');
+                    if (q == -1) queryParameters = new List<KeyValuePair<string, string>>();
+                    else queryParameters = HttpUtils.GetParameters(unparsedUrl.Substring(q)).ToList();
+                }
+                else
+                {
+                    queryParameters = url.GetQueryParameters().ToList();
+                }
+
+
                 queryParameters = url.GetQueryParameters().ToList();
                 nextQueryParameterToAdd = queryParameters.Count;
             }
@@ -225,7 +304,16 @@ namespace Shaman
         {
             if (fragmentParameters == null)
             {
-                fragmentParameters = url.GetFragmentParameters().ToList();
+                if (parsedUnparsedOutOfSync)
+                {
+                    var hash = unparsedUrl.IndexOf('#');
+                    if (hash == -1) fragmentParameters = new List<KeyValuePair<string, string>>();
+                    else fragmentParameters = HttpUtils.GetParameters(unparsedUrl.Substring(hash)).ToList();
+                }
+                else
+                {
+                    fragmentParameters = url.GetFragmentParameters().ToList();
+                }
                 nextFragmentParameterToAdd = fragmentParameters.Count;
             }
         }
@@ -280,7 +368,17 @@ namespace Shaman
         {
             get
             {
-                return PathAndQueryConsistentUrl.Query;
+
+                var absurl = TryGetAbsoluteUriIfCached();
+                if (absurl != null && !parsedUnparsedOutOfSync) return url.Query;
+
+                absurl = AbsoluteUri;
+                var q = absurl.IndexOf('?');
+                if (q == -1) return string.Empty;
+
+                var hash = absurl.IndexOf('#', q);
+                if (hash != -1) return absurl.Substring(q, hash - q);
+                return absurl.Substring(q);
             }
         }
 
@@ -293,7 +391,11 @@ namespace Shaman
             return FragmentParameters.FirstOrDefault(x => x.Key == name).Value;
         }
 
+#if NET35
         public IEnumerable<KeyValuePair<string, string>> QueryParameters
+#else
+        public IReadOnlyList<KeyValuePair<string, string>> QueryParameters
+#endif       
         {
             get
             {
@@ -307,7 +409,12 @@ namespace Shaman
                 return queryParameters;
             }
         }
+#if NET35
         public IEnumerable<KeyValuePair<string, string>> FragmentParameters
+#else
+        public IReadOnlyList<KeyValuePair<string, string>> FragmentParameters
+#endif
+
         {
             get
             {
@@ -329,6 +436,54 @@ namespace Shaman
         public override string ToString()
         {
             return Url.ToString();
+        }
+
+        internal static bool UrisEqual(LazyUri a, LazyUri b)
+        {
+            if (a == null || b == null) return (a == null) == (b == null);
+            if (object.ReferenceEquals(a, b)) return true;
+
+            var aa = a.TryGetAbsoluteUriIfCached();
+            if (aa != null)
+            {
+                var bb = b.TryGetAbsoluteUriIfCached();
+                if (bb != null) return aa == bb;
+            }
+
+            if (a.Scheme != b.Scheme) return false;
+            if (a.Authority != b.Authority) return false;
+            if (a.AbsolutePath != b.AbsolutePath) return false;
+
+            lock (a)
+            {
+                a.LoadInitialFragmentParameters();
+                a.LoadInitialQueryParameters();
+            }
+
+            lock (b)
+            {
+                b.LoadInitialFragmentParameters();
+                b.LoadInitialQueryParameters();
+            }
+
+            if (a.fragmentParameters.Count != b.fragmentParameters.Count) return false;
+            if (a.queryParameters.Count != b.queryParameters.Count) return false;
+
+            for (int i = 0; i < a.fragmentParameters.Count; i++)
+            {
+                var af = a.fragmentParameters[i];
+                var bf = b.fragmentParameters[i];
+                if (af.Key != bf.Key || af.Value != bf.Value) return false;
+            }
+
+            for (int i = 0; i < a.queryParameters.Count; i++)
+            {
+                var aq = a.queryParameters[i];
+                var bq = b.queryParameters[i];
+                if (aq.Key != bq.Key || aq.Value != bq.Value) return false;
+            }
+
+            return true;
         }
     }
 }
