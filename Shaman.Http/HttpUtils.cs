@@ -267,8 +267,7 @@ namespace Shaman
 
             if (extension != null)
             {
-                if (name != null) name = Path.GetFileNameWithoutExtension(name) + extension;
-                else name = name + extension;
+                name = Path.GetFileNameWithoutExtension(name) + extension;
             }
 
             return name;
