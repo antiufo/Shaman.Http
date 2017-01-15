@@ -378,7 +378,16 @@ namespace Shaman.Runtime
                     {
                         if ((x.TagName == "meta" && x.GetAttributeValue("name") == property) || x.GetAttributeValue("property") == property || x.GetAttributeValue("itemprop") == property)
                         {
-                            var val = x.GetAttributeValue("value") ?? x.GetAttributeValue("content") ?? (x.GetAttributeValue("src") != null || x.GetAttributeValue("href") != null ? x.TryGetLinkUrl()?.AbsoluteUri : null) ?? x.TryGetValue();
+                            var val = x.GetAttributeValue("value") ?? x.GetAttributeValue("content");
+                            if (val == null)
+                            {
+                                if (x.GetAttributeValue("src") != null || x.GetAttributeValue("href") != null)
+                                {
+                                    var m = x.TryGetLinkUrl();
+                                    if (m != null) val = m.AbsoluteUri;
+                                }
+                                if (val == null) val = x.TryGetValue();
+                            }
                             return WrapText(x, val);
                         }
                         return null;
