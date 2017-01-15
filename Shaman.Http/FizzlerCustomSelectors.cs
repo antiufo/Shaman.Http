@@ -1191,7 +1191,6 @@ namespace Shaman.Runtime
                 };
             });
 
-
             Parser.RegisterCustomSelector<HtmlNode, Selector<HtmlNode>>("take-while", condition =>
             {
                 return nodes =>
@@ -1487,8 +1486,67 @@ namespace Shaman.Runtime
             });
         }
 
+        private static HtmlNode CloneWithout(HtmlNode x, HtmlNodeHashSet torebuild, List<HtmlNode> excluded)
+        {
+            if (!torebuild.Contains(x)) return x;
+            if (excluded.Contains(x)) return null;
+
+            HtmlNode copy;
+            if (x.NodeType == HtmlNodeType.Element)
+            {
+                copy = x.OwnerDocument.CreateElement(x.OriginalName);
+            }
+            else if (x.NodeType == HtmlNodeType.Document)
+            {
+                copy = CreateDocument(x.OwnerDocument).DocumentNode;
+            }
+            else
+            {
+                return x; // Should be impossible since comments and text have no children
+            }
+
+            foreach (var attr in x.Attributes)
+            {
+                copy.Attributes.Add(attr.OriginalName, attr.Value);
+            }
+            foreach (var child in x.ChildNodes)
+            {
+                var z = CloneWithout(child, torebuild, excluded);
+                if(z != null) copy.ChildNodes.Add(z);
+            }
+            return copy;
         }
-        
+
+        private static void AddNodesToRemove(List<HtmlNode> stack, HtmlNodeHashSet torebuild)
+        {
+            var x = stack.Last();
+            if (x.HasChildNodes)
+            {
+                foreach (var sub in x.ChildNodes)
+                {
+                    if (torebuild.Contains(sub))
+                    {
+                        foreach (var item in stack)
+                        {
+#if SALTARELLE
+                            if (!torebuild.Contains(item))
+#endif
+                            {
+                                torebuild.Add(item);
+                            }
+                        }
+                        return;
+                    }
+                    else
+                    {
+                        stack.Add(sub);
+                        AddNodesToRemove(stack, torebuild);
+                        stack.RemoveAt(stack.Count - 1);
+                    }
+
+                }
+            }
+        }
 
         private static bool IsNullOrWhiteSpace(string str)
         {
