@@ -113,7 +113,23 @@ namespace Shaman
             if (task.Status != TaskStatus.RanToCompletion) throw new InvalidOperationException();
             return task.Result;
         }
+        public static ValueString SubstringValue(this string str, int start, int length)
+        {
+            return str.AsValueString().Substring(start, length);
+        }
+        public static ValueString SubstringValue(this string str, int start)
+        {
+            return str.AsValueString().Substring(start);
+        }
 
+        public static bool ContainsIndex(this ValueString k, int idx)
+        {
+            return idx >= 0 && idx < k.Length;
+        }
+        public static bool ContainsIndex<T>(this IList<T> k, int idx)
+        {
+            return idx >= 0 && idx < k.Count;
+        }
     }
 #if !NET35
     namespace Runtime
