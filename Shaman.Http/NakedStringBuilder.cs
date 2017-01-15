@@ -27,7 +27,7 @@ namespace Shaman.Runtime
         {
             if (Data.Length < capacity)
             {
-                var n = new char[Math.Min(Data.Length * 2, capacity)];
+                var n = new char[Math.Max(Data.Length * 2, capacity)];
                 Array.Copy(Data, 0, n, 0, Length);
                 Data = n;
             }
