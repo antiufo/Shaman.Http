@@ -27,15 +27,15 @@
   ],
   "compile": [],
   "dependencies": {
-    "Shaman.BlobStore": "1.0.1.1",
+    "Shaman.BlobStore": "1.0.1.3",
     "Shaman.Fizzler": "1.0.1.10",
-    "Shaman.Dom": "1.0.1.14",
+    "Shaman.Dom": "1.0.1.17",
     "Shaman.CommonExtensions": "1.0.1.1",
     "Newtonsoft.Json": "6.0.5",
     "Shaman.FileSize": "1.0.1.1",
     "Shaman.FileSystem": "1.0.1.1",
     "Shaman.Configuration.Metadata": "1.0.1.1",
-    "Shaman.ValueString": "1.0.2.15"
+    "Shaman.ValueString": "1.0.2.21"
   },
   "frameworks": {
     "net46": {
