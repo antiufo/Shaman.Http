@@ -862,6 +862,10 @@ namespace Shaman
         {
             return HttpUtils.GetParameters(url.Query).FirstOrDefault(x => x.Key == name).Value;
         }
+        public static string GetFragmentParameter(this Uri url, string name)
+        {
+            return HttpUtils.GetParameters(url.Fragment).FirstOrDefault(x => x.Key == name).Value;
+        }
 
         public static IEnumerable<KeyValuePair<string, string>> GetQueryParameters(this Uri url)
         {
