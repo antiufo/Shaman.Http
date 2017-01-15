@@ -1749,7 +1749,9 @@ namespace Shaman
                 AppendText(node, sb, ref status);
             }
             TrimLastWhitespaceCharacters(sb);
-            return sb.ToFinalString();
+            var s = sb.ToFinalString();
+            ReseekableStringBuilder.Release(sb);
+            return s;
         }
 
         private static bool ShouldIgnoreNonFirstLevelNodeForInnerText(HtmlNode node)
