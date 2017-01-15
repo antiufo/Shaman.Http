@@ -48,10 +48,30 @@ namespace Shaman
 #endif
     {
 #if !SALTARELLE
-        public static void AppendUriEncoded(this StringBuilder sb, string text)
+        public static void AppendUriEncoded(this StringBuilder sb, string str)
         {
-            sb.Append(HttpUtils.EscapeDataString(text));
+            for (int i = 0; i < str.Length; i++)
+            {
+                var ch = str[i];
+                if (ch == ' ')
+                {
+                    sb.Append('+');
+                }
+                else if (ch == '#' || ch == '?' || ch == '&' || ch == '=' || ch == '%' || ch == '+' || ch < 0x21)
+                {
+                    sb.Append('%');
+                    sb.Append(Hex[ch >> 4]);
+                    sb.Append(Hex[ch & 0xF]);
+                }
+                else
+                {
+                    sb.Append(ch);
+                }
+            }
+
         }
+        private const string Hex = "0123456789ABCDEF";
+
 
         public static void AppendHtmlEncoded(this StringBuilder sb, string text, int startIndex = 0, int endIndex = -1)
         {

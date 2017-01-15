@@ -460,12 +460,63 @@ namespace Shaman
 
 
 
+
 #endif
 
-        public static string EscapeDataString(string stringToEscape)
+
+#if SALTARELLE
+        [System.Runtime.CompilerServices.InlineCode("encodeURIComponent({s})")]
+        private static string encodeURIComponent(string s) { return null; }
+
+        [System.Runtime.CompilerServices.InlineCode("decodeURIComponent({s})")]
+        private static string decodeURIComponent(string s) { return null; }
+
+
+        public static string EscapeDataString(string k) { return encodeURIComponent(k).Replace("%20", "+"); }
+
+        public static string UnescapeDataString(string k) { return decodeURIComponent(k.Replace('+', ' ')); }
+
+        
+
+#else
+
+
+
+
+        [AllowNumericLiterals]
+        public static string EscapeDataString(string str)
         {
-            return Uri.EscapeDataString(stringToEscape).Replace("%20", "+");
+            var ok = true;
+            for (int i = 0; i < str.Length; i++)
+            {
+                if (!char.IsLetterOrDigit(str[i]))
+                {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) return str;
+            var sb = ReseekableStringBuilder.AcquirePooledStringBuilder();
+            sb.AppendUriEncoded(str);
+            if (str.Length == sb.Length)
+            {
+                if (str.IndexOf(' ') == -1)
+                {
+                    ReseekableStringBuilder.Release(sb);
+                    return str;
+                }
+            }
+            var result = sb.ToStringCached();
+            ReseekableStringBuilder.Release(sb);
+            return result;
         }
+
+
+
+        //public static string EscapeDataString(string stringToEscape)
+        //{
+        //    return Uri.EscapeDataString(stringToEscape).Replace("%20", "+");
+        //}
 
         public static string UnescapeDataString(string stringToUnescape)
         {
