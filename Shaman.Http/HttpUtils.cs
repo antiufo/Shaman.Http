@@ -330,7 +330,7 @@ namespace Shaman
             return ReseekableStringBuilder.GetValueAndRelease(sb);
         }
 
-        private static void AppendParameters(IEnumerable<KeyValuePair<string, string>> parameters, StringBuilder sb, char initialChar)
+        public static void AppendParameters(IEnumerable<KeyValuePair<string, string>> parameters, StringBuilder sb, char initialChar)
         {
             var first = initialChar == '\0' ? true : sb.IndexOf(initialChar) == -1;
             foreach (var item in parameters)
