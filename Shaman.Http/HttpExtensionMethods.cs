@@ -125,6 +125,15 @@ namespace Shaman
                 var cacheData = needsCache ? new WebCache() : null;
 
 
+                if (metaParameters.TryGetValue("$pdftables") == "1")
+                {
+#if STANDALONE
+                    throw new NotSupportedException("PDF table extraction is not supported in standalone Shaman.Http.");
+#else
+                    return await GetPdfTablesAsync(url, options, cacheData);
+#endif
+                }
+
                 Uri redirectLocation = null;
 
                 var sw = Stopwatch.StartNew();
