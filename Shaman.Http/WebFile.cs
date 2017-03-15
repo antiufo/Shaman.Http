@@ -203,6 +203,8 @@ namespace Shaman.Types
             return OpenStreamAsync(false);
         }
 
+        public DateTime? LastModified { get; private set; }
+
         internal async Task<Stream> OpenStreamAsync(bool synchronous, bool skipCache = false, bool linger = true)
         {
 
@@ -356,6 +358,22 @@ namespace Shaman.Types
                         }
                         await fs.WriteAsync(buffer, 0, readBytes);
                     }
+#if !NET35
+                    var m = stream as MediaStream;
+                    if (m != null)
+                    {
+                        var response = await m.Manager.GetResponseAsync();
+                        if (response != null)
+                        {
+                            var lm = response.Content.Headers.LastModified;
+                            if(lm != null)
+                            {
+                                fs.Dispose();
+                                File.SetLastWriteTimeUtc(temp, lm.Value.UtcDateTime);
+                            }   
+                        }
+                    }
+#endif
                 }
                 MaskedFile.PublishMaskedFile(temp, destination);
             }

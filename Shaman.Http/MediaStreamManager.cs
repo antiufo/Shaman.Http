@@ -29,11 +29,19 @@ namespace Shaman.Runtime
         {
             return new MediaStreamManager(getResponse, willStartRightNow);
         }
+
         
+        private TaskCompletionSource<HttpResponseMessage> response;
+        public Task<HttpResponseMessage> GetResponseAsync()
+        {
+            return response.Task;
+        }
+
         internal MediaStreamManager(Func<long, Task<HttpResponseMessage>> getResponse, bool willStartRightNow)
         {
             this.getResponse = getResponse;
             this.data = new List<byte[]>(200);
+            this.response = new TaskCompletionSource<HttpResponseMessage>();
 #if DESKTOP
             var reader = new Thread(() => ReadSource());
             reader.Name = "MediaStreamManager Reader";
@@ -80,6 +88,7 @@ namespace Shaman.Runtime
                 try
                 {
                     var response = await getResponse(this.availableBytes);
+                    this.response.TrySetResult(response);
                     if (this.availableBytes == 0)
                     {
 #if WEBCLIENT
@@ -314,6 +323,7 @@ namespace Shaman.Runtime
                 source = null;
                 TaskEx.Run(() => s.Dispose());
             }
+            response.TrySetException(error ?? new ObjectDisposedException("MediaStreamManager"));
 
         }
 
@@ -464,7 +474,7 @@ namespace Shaman.Runtime
         private Stopwatch currentAttemptStopwatch;
         private TimeSpan currentAttemptLastReceivedData;
 
-        private static long? CalculateSpeedNow(long downloadedBytes, Stopwatch sw, TimeSpan lastReceivedData)
+        internal static long? CalculateSpeedNow(long downloadedBytes, Stopwatch sw, TimeSpan lastReceivedData)
         {
             if (sw == null) return null;
 
