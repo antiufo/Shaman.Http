@@ -103,7 +103,11 @@ namespace Shaman.Runtime
 
         internal static WebCache TryReadCacheFile(string path, bool onlyIfFailed = false, bool fromFileSystem = false)
         {
-
+#if STANDALONE
+            HttpUtils.EnsureInitialized();
+#else
+            Utils.EnsureInitialized();
+#endif
             Stream stream;
             if (fromFileSystem)
             {
