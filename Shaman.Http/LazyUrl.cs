@@ -97,6 +97,14 @@ namespace Shaman
 
         }
 
+        public void AppendCookies(IsolatedCookieContainer cookies)
+        {
+            foreach (var item in cookies.Cookies)
+            {
+                AppendFragmentParameter("$cookie-" + item.Key, item.Value);
+            }
+        }
+
         public Uri PathConsistentUrl
         {
             get
