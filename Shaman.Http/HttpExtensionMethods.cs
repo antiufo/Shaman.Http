@@ -152,7 +152,7 @@ namespace Shaman
                         if (info.Exception != null)
                         {
                             var webex = info.Exception as WebException;
-                            if (webex == null || webex.Status != HttpUtils.UnexpectedRedirect)
+                            if (webex == null || webex.Status != HttpUtils.Error_UnexpectedRedirect)
                             {
                                 using (info.Response)
                                 {
@@ -834,9 +834,9 @@ namespace Shaman
                         else
                         {
                             if (!preprocessedOptions.AllowRedirects)
-                                throw new WebException("An unexpected redirect was received from the server.", HttpUtils.UnexpectedRedirect);
+                                throw new WebException("An unexpected redirect was received from the server.", HttpUtils.Error_UnexpectedRedirect);
                             numRedirects++;
-                            if (numRedirects >= 5) throw new WebException("The maximum number of http-equiv redirects has been reached.", HttpUtils.MaximumNumberOfRedirectsExceeded);
+                            if (numRedirects >= 5) throw new WebException("The maximum number of http-equiv redirects has been reached.", HttpUtils.Error_MaximumNumberOfRedirectsExceeded);
 
                             preprocessedOptions.PostData = null;
                             preprocessedOptions.PostString = null;
@@ -1118,6 +1118,33 @@ namespace Shaman
             r.Response.EnsureSuccessStatusCode();
 #endif
 
+
+#if !NET35
+            if (metaparameters.TryGetValue("$forbid-html") == "1")
+            {
+                var contentType = r.Response.Content.Headers.ContentType;
+                if (contentType != null && contentType.MediaType != null)
+                {
+                    var t = contentType.MediaType;
+                    if (t.Contains("/html") || t.Contains("/xhtml"))
+                    {
+                        using (var reader = new LazyTextReader(await r.Response.Content.ReadAsStreamAsync(), Encoding.UTF8))
+                        {
+                            var doc = new HtmlDocument();
+                            doc.Load(reader);
+                            doc.SetPageUrl(r.RespondingUrl);
+                            throw new NotSupportedResponseException(contentType.ToString(), r.RespondingUrl)
+                            {
+                                Page = doc.DocumentNode
+                            };
+                        }
+
+                        
+                    }
+                }
+            }
+#endif
+
 #if NET35
             var length = r.Response.ContentLength;
 #else
@@ -1135,7 +1162,7 @@ namespace Shaman
                 {
                     if (Regex.IsMatch(r.RespondingUrl.AbsoluteUri, forbiddenRedirect))
                     {
-                        throw new WebException("Unexpected responding URL."); 
+                        throw new WebException("Unexpected responding URL.", HttpUtils.Error_ForbiddenRedirectMatch); 
                     }
                 }
             }
@@ -1161,7 +1188,7 @@ namespace Shaman
                             if (interval[0].Length != 0 && actualLength < long.Parse(interval[0])) continue;
                             if (interval[1].Length != 0 && actualLength > long.Parse(interval[1])) continue;
                         }
-                        throw new WebException("Invalid file length.");
+                        throw new WebException("Invalid file length.", HttpUtils.Error_SizeOutsideAcceptableRange);
                     }
                 }
             }
@@ -1313,6 +1340,7 @@ namespace Shaman
 
         public static string GetLeftPart_UriPartial_Query(this Uri url)
         {
+            if (url.Fragment.Length == 0) return url.AbsoluteUri;
             var b = url.GetLeftPart(UriPartial.Path);
             if (b == null) return null;
             return b + url.Query;
@@ -1433,59 +1461,65 @@ namespace Shaman
             return doc.DocumentNode;
         }
 
-
-        public static Uri GetImageUrl(this HtmlNode finalNode)
+        public static Uri TryGetImageUrl(this HtmlNode finalNode)
         {
             Uri url = null;
             foreach (var attr in finalNode.Attributes)
             {
-                var name = attr.Name;
-                if (name.Contains("src") || name.Contains("lazy") || name.Contains("img") || name.Contains("original") || name.StartsWith("data-"))
+                var v = TryGetImageUrl(finalNode, attr);
+                if (v != null)
                 {
-                    var str = attr.Value;
-                    if (string.IsNullOrEmpty(str)) continue;
-
-                    if (name != "src")
-                    {
-                        if (str[0] == '{' || str[0] == '[' || str[0] == '<') continue;
-                    }
-                    Uri u = null;
-                    if (name.StartsWith("data-") && !(str.StartsWith("http://") || str.StartsWith("https://") || str.StartsWith("/"))) continue;
-                    try
-                    {
-                        u = HttpUtils.GetAbsoluteUri(finalNode.OwnerDocument.GetLazyBaseUrl(), str);
-                        if (name != "src")
-                        {
-                            var path = u.AbsolutePath.ToLowerFast();
-                            if (!(path.EndsWith(".jpg") ||
-                                path.EndsWith(".jpeg") ||
-                                path.EndsWith(".png")) ||
-                                path.EndsWith(".gif"))
-                                continue;
-                        }
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-                    if (u != null)
-                    {
-                        if (u.Scheme != HttpUtils.UriSchemeHttp && u.Scheme != HttpUtils.UriSchemeHttps) u = null;
-                        else
-                        {
-                            if (name != "src") return u;
-                            url = u;
-                        }
-                    }
-
-
+                    url = v;
+                    if (attr.Name != "src") return url;
                 }
             }
             return url;
         }
 
+        internal static Uri TryGetImageUrl(HtmlNode node, HtmlAttribute attr)
+        {
+            var name = attr.Name;
+            if (name != "srcset" && (name.Contains("src") || name.Contains("lazy") || name.Contains("img") || name.Contains("original") || name.StartsWith("data-")))
+            {
+                var str = attr.Value;
+                if (string.IsNullOrEmpty(str)) return null;
+
+                if (name != "src")
+                {
+                    if (str[0] == '{' || str[0] == '[' || str[0] == '<') return null;
+                }
+                Uri u = null;
+                if (name.StartsWith("data-") && !(str.StartsWith("http://") || str.StartsWith("https://") || str.StartsWith("/"))) return null;
+                try
+                {
+                    u = HttpUtils.GetAbsoluteUri(node.OwnerDocument.GetLazyBaseUrl(), str);
+                    if (name != "src")
+                    {
+                        var path = u.AbsolutePath.ToLowerFast();
+                        if (!(path.EndsWith(".jpg") ||
+                            path.EndsWith(".jpeg") ||
+                            path.EndsWith(".png")) ||
+                            path.EndsWith(".gif"))
+                            return null;
+                    }
+                }
+                catch
+                {
+                    return null;
+                }
+                if (u != null)
+                {
+                    if (u.Scheme != HttpUtils.UriSchemeHttp && u.Scheme != HttpUtils.UriSchemeHttps) u = null;
+                    else
+                    {
+                        return u;
+                    }
+                }
 
 
+            }
+            return null;
+        }
 
         public static void WriteHtmlEncoded(this TextWriter sb, string text, bool newLinesToBr = false, int startIndex = 0, int endIndex = -1)
         {
@@ -1567,23 +1601,30 @@ namespace Shaman
         public static Uri TryGetLinkUrl(this HtmlNode node)
         {
             if (node == null) throw new ArgumentNullException();
-            var baseUrl = node.OwnerDocument.GetLazyBaseUrl();
-            var href = node.GetAttributeValue("href");
-            if (href != null)
+            try
             {
-                return HttpUtils.GetAbsoluteUrlInternal(baseUrl, href);
-            }
+                var baseUrl = node.OwnerDocument.GetLazyBaseUrl();
+                var href = node.GetAttributeValue("href");
+                if (href != null)
+                {
+                    return HttpUtils.GetAbsoluteUrlInternal(baseUrl, href);
+                }
 
-            var src = node.GetAttributeValue("src");
-            if (src != null)
-            {
-                return HttpUtils.GetAbsoluteUrlInternal(baseUrl, src);
+                var src = node.GetAttributeValue("src");
+                if (src != null)
+                {
+                    if (node.TagName == "img") return TryGetImageUrl(node);
+                    return HttpUtils.GetAbsoluteUrlInternal(baseUrl, src);
+                }
+                if (node.OwnerDocument.IsJson() || node.OwnerDocument.IsXml())
+                {
+                    var t = node.GetText();
+                    if (t == null) return null;
+                    return HttpUtils.GetAbsoluteUri(node.OwnerDocument.GetLazyPageUrl(), t);
+                }
             }
-            if (node.OwnerDocument.IsJson() || node.OwnerDocument.IsXml())
+            catch
             {
-                var t = node.GetText();
-                if (t == null) return null;
-                return HttpUtils.GetAbsoluteUri(node.OwnerDocument.GetLazyPageUrl(), t);
             }
             return null;
         }
@@ -1965,14 +2006,14 @@ namespace Shaman
             if (metaParameters != null)
             {
                 var mustHave = metaParameters.TryGetValue("$assert-selector");
-                if (mustHave != null && node.FindSingle(mustHave) == null) throw new WebException("The retrieved page does not contain an element that matches " + mustHave);
+                if (mustHave != null && node.FindSingle(mustHave) == null) throw new WebException("The retrieved page does not contain an element that matches " + mustHave, HttpUtils.Error_AssertSelectorMissing);
 
                 var mustForbit = metaParameters.TryGetValue("$forbid-selector");
-                if (mustForbit != null && node.FindSingle(mustForbit) != null) throw new WebException("The retrieved page contains an element that matches the forbidden selector " + mustForbit);
+                if (mustForbit != null && node.FindSingle(mustForbit) != null) throw new WebException("The retrieved page contains an element that matches the forbidden selector " + mustForbit, HttpUtils.Error_ForbiddenSelectorExists);
 
                 var errorSelector = metaParameters.TryGetValue("$error-selector");
                 var error = errorSelector != null ? node.TryGetValue(errorSelector) : null;
-                if (error != null) throw new WebException("The page reports: " + error);
+                if (error != null) throw new WebException("The page reports: " + error, HttpUtils.Error_ErrorSelectorMatched);
             }
         }
 #endif
@@ -2321,7 +2362,7 @@ namespace Shaman
 
         public static bool IsXml(this HtmlDocument document)
         {
-            return (document.DocumentNode.ChildNodes.Any(x => x.TagName == "?xml") && !document.DocumentNode.ChildNodes.Any(x => x.TagName == "html"));
+            return ((document.OptionParseAsXml || document.DocumentNode.ChildNodes.Any(x => x.TagName == "?xml")) && !document.DocumentNode.ChildNodes.Any(x => x.TagName == "html"));
         }
 
 

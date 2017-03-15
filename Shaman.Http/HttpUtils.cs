@@ -15,6 +15,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Globalization;
+using System.Reflection;
 
 namespace Shaman
 {
@@ -63,6 +64,7 @@ namespace Shaman
                     else
                         return "http:" + relative;
                 }
+                if (relative.StartsWith("#")) return baseUrl.PathAndQueryConsistentUrl.GetLeftPart_UriPartial_Query() + relative;
 
                 if (relative.StartsWith("http:") || relative.StartsWith("https:"))
                 {
@@ -181,6 +183,13 @@ namespace Shaman
             return url;
         }
 #endif
+
+        internal static void EnsureInitialized()
+        {
+            if (HtmlDocument.CustomPageUrlTypeConverter == null)
+                HtmlDocument.CustomPageUrlTypeConverter = x => ((LazyUri)x).Url;
+        }
+
 
         internal static Uri GetAbsoluteUrlInternal(LazyUri baseUrl, string relative)
         {
@@ -325,13 +334,18 @@ namespace Shaman
         [Configuration]
         private static string[] Configuration_DownloadWrapperNames = new[] { "download", "action", "torrent", "get_file", "getfile", "file.php" };
 
-        public const WebExceptionStatus WebAuthenticationRequested = (WebExceptionStatus)0x7FFF0000;
-        public const WebExceptionStatus RedirectLoopDetected = (WebExceptionStatus)0x7FFF0001;
-        public const WebExceptionStatus UnexpectedRedirect = (WebExceptionStatus)0x7FFF0002;
-        public const WebExceptionStatus MaximumNumberOfRedirectsExceeded = (WebExceptionStatus)0x7FFF0003;
-        public const WebExceptionStatus RequestProhibitedByProxy = (WebExceptionStatus)20;
-        public const WebExceptionStatus UnexpectedResponseType = (WebExceptionStatus)0x7FFF0004;
-        public const WebExceptionStatus UnknownError = (WebExceptionStatus)0x7FFF0005;
+        public const WebExceptionStatus Error_WebAuthenticationRequested = (WebExceptionStatus)710;
+        public const WebExceptionStatus Error_RedirectLoopDetected = (WebExceptionStatus)711;
+        public const WebExceptionStatus Error_UnexpectedRedirect = (WebExceptionStatus)712;
+        public const WebExceptionStatus Error_MaximumNumberOfRedirectsExceeded = (WebExceptionStatus)713;
+        public const WebExceptionStatus Error_UnexpectedResponseType = (WebExceptionStatus)714;
+        public const WebExceptionStatus Error_UnknownError = (WebExceptionStatus)715;
+        public const WebExceptionStatus Error_SizeOutsideAcceptableRange = (WebExceptionStatus)716;
+        public const WebExceptionStatus Error_ForbiddenRedirectMatch = (WebExceptionStatus)717;
+        public const WebExceptionStatus Error_ErrorSelectorMatched = (WebExceptionStatus)718;
+        public const WebExceptionStatus Error_AssertSelectorMissing = (WebExceptionStatus)719;
+        public const WebExceptionStatus Error_ForbiddenSelectorExists = (WebExceptionStatus)720;
+        public const WebExceptionStatus Error_JavaScriptProcessingUnknownError = (WebExceptionStatus)721;
 
         public static void AppendQueryParameters(IEnumerable<KeyValuePair<string, string>> parameters, StringBuilder sb)
         {
@@ -1169,6 +1183,61 @@ namespace Shaman
             }
             return (pos - i) % 2 == 0;
 
+        }
+
+        public static bool IsHttp(Uri url)
+        {
+            return url.Scheme == UriSchemeHttp || url.Scheme == UriSchemeHttps;
+        }
+
+        public static IEnumerable<KeyValuePair<string, string>> ParseCookies(string cookies)
+        {
+            var c = cookies.AsValueString();
+            if (c.StartsWith("Cookie:")) c = c.Substring("Cookie:".Length);
+            foreach (var item in c.Split(';')) 
+            {
+                var eq = item.IndexOf('=');
+                if (eq != -1)
+                {
+                    yield return new KeyValuePair<string, string>(item.Substring(0, eq).Trim().ToClrString(), item.Substring(eq+1).Trim().ToClrString());
+                }
+            }
+        }
+
+        private static string[] CustomHttpErrorNames;
+
+        public static string HttpStatusOrErrorCodeToString(WebExceptionStatus code)
+        {
+            return HttpStatusOrErrorCodeToString((HttpStatusCode)code);
+        }
+
+        public static string HttpStatusOrErrorCodeToString(HttpStatusCode code)
+        {
+            if ((int)code < 100) return ((WebExceptionStatus)code).ToString();
+            if ((int)code >= 700)
+            {
+                if (CustomHttpErrorNames == null)
+                {
+                    var z = new string[30];
+                    foreach (var field in typeof(Utils).GetFields(System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.Static))
+                    {
+                        if (field.Name.StartsWith("Error_"))
+                        {
+                            var val = (int)(WebExceptionStatus)field.GetValue(null);
+                            z[val - 700] = field.Name.Substring(6);
+                        }
+                    }
+                    CustomHttpErrorNames = z;
+                }
+                var idx = (int)code - 700;
+                if (idx < CustomHttpErrorNames.Length)
+                {
+                    var v = CustomHttpErrorNames[idx];
+                    if (v != null) return v;
+                }
+                return ((int)code).ToString();
+            }
+            return code.ToString();
         }
     }
 

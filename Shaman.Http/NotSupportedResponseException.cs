@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Shaman.Dom;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 #if NATIVE_HTTP
@@ -25,11 +26,12 @@ namespace Shaman.Runtime
                   (retrievedContentType != null && retrievedContentType.Contains("html", StringComparison.OrdinalIgnoreCase) ?
                   "The server returned data which, although marked as " + retrievedContentType + ", doesn't look like actual HTML." :
                   "The server returned an unsupported Content-Type: " + retrievedContentType + ".") +
-                  " If the response is supposed to be interpreted as plain text, add the #$assume-text=1 meta parameter. If it is HTML, add #$assume-html=1", HttpUtils.UnexpectedResponseType)
+                  " If the response is supposed to be interpreted as plain text, add the #$assume-text=1 meta parameter. If it is HTML, add #$assume-html=1", HttpUtils.Error_UnexpectedResponseType)
         {
             this.ContentType = retrievedContentType;
             this.ResponseUrl = finalUrl;
         }
 
+        public HtmlNode Page { get; internal set; }
     }
 }

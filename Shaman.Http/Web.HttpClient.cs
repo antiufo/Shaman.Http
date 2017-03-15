@@ -50,6 +50,9 @@ ExtensionMethods
         [Configuration]
         private static int Configuration_MinNumberOfFragmentParametersForAdHocRequestUri = 10;
 
+        [Configuration]
+        private static int Configuration_SameRedirectDelayTimeMs = 300;
+
         internal class HttpResponseInfo
         {
             public HttpResponseMessage Response;
@@ -62,8 +65,9 @@ ExtensionMethods
         [AllowNumericLiterals]
         internal static async Task<HttpResponseInfo> SendAsync(this LazyUri url, WebRequestOptions options, HttpRequestMessageBox messageBox, bool alwaysCatchAndForbidRedirects = false, bool keepResponseAliveOnError = false)
         {
+            HttpUtils.EnsureInitialized();
             await Utils.CheckLocalFileAccessAsync(url);
-            Utils.RaiseWebRequestEvent(url, true);
+            Utils.RaiseWebRequestEvent(url, false);
             HttpResponseMessage result = null;
             LazyUri previousResponse2 = null;
             try
@@ -104,8 +108,10 @@ ExtensionMethods
                     }
                     result = (HttpWebResponse)await message.GetResponseAsync();
 #else
-                    var client = CreateHttpClient();
-                    result = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead);
+                    using (var client = CreateHttpClient())
+                    {
+                        result = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead);
+                    }
 #endif
 
 
@@ -138,16 +144,33 @@ ExtensionMethods
                     else
                     {
 
-                        if (alwaysCatchAndForbidRedirects) return new HttpResponseInfo() { Response = result, RespondingUrl = previousResponse2, Exception = new WebException("Unexpected redirect", HttpUtils.UnexpectedRedirect) };
+                        if (alwaysCatchAndForbidRedirects) return new HttpResponseInfo() { Response = result, RespondingUrl = previousResponse2, Exception = new WebException("Unexpected redirect", HttpUtils.Error_UnexpectedRedirect) };
 
                         result.Dispose();
                         var redirectUrl = new LazyUri(redirectUrlNative);
                         if (!redirectUrl.IsAbsoluteUri) redirectUrl = new LazyUri(new Uri(previousResponse2.PathConsistentUrl, redirectUrlNative));
-                        if (options != null && !options.AllowRedirects) throw new WebException("Unexpected redirect was received.", HttpUtils.UnexpectedRedirect);
-                        if (redirectIndex == Configuration_MaximumNumberOfRedirects) throw new WebException("The maximum number of redirects has been reached.", HttpUtils.MaximumNumberOfRedirectsExceeded);
+                        if (options != null && !options.AllowRedirects) throw new WebException("Unexpected redirect was received.", HttpUtils.Error_UnexpectedRedirect);
+                        if (redirectIndex == Configuration_MaximumNumberOfRedirects) throw new WebException("The maximum number of redirects has been reached.", HttpUtils.Error_MaximumNumberOfRedirectsExceeded);
 
                         if (!(redirectIndex == 0 && options != null && (options.PostData != null || options.PostString != null)))
-                            if ((previousResponse1 != null && HttpUtils.UrisEqual(redirectUrl.PathAndQueryConsistentUrl, previousResponse1.PathAndQueryConsistentUrl)) || HttpUtils.UrisEqual(redirectUrl, previousResponse2)) throw new WebException("The server isn't redirecting the requested resource properly.", HttpUtils.RedirectLoopDetected);
+                            if ((
+                                (previousResponse1 != null && HttpUtils.UrisEqual(redirectUrl.PathAndQueryConsistentUrl, previousResponse1.PathAndQueryConsistentUrl)) ||
+                                HttpUtils.UrisEqual(redirectUrl, previousResponse2)))
+                            {
+                                if (url.GetFragmentParameter("$allow-same-redirect") == "1")
+                                {
+#if NET35
+                                    await TaskEx.Delay(Configuration_SameRedirectDelayTimeMs);
+#else
+                                    await Task.Delay(Configuration_SameRedirectDelayTimeMs);
+#endif
+                                }
+                                else
+                                {
+                                    throw new WebException("The server isn't redirecting the requested resource properly.", HttpUtils.Error_RedirectLoopDetected);
+                                }
+                                
+                            }
                         previousResponse1 = previousResponse2;
                         previousResponse2 = redirectUrl;
 
@@ -170,7 +193,7 @@ ExtensionMethods
             }
         }
 
-
+        
         private static HttpRequestMessage CreateRequestInternal(LazyUri url, WebRequestOptions options, bool forceSameUrl, int redirectionIndex
 #if WEBCLIENT
         , out HttpContent requestContent
@@ -217,8 +240,10 @@ ExtensionMethods
             message.ServicePoint.Expect100Continue = false;
 #else
             HttpContent requestContent = null;
-            message.Headers.ExpectContinue = false;     
+            message.Headers.ExpectContinue = false;
 #endif
+
+
 
             if (options != null)
             {
@@ -295,6 +320,9 @@ ExtensionMethods
                 {
                     requestContent = new StringContent(string.Empty, null, null);
                 }
+#if !WEBCLIENT
+                message.Content = requestContent;
+#endif
 
 
                 string userAgent = null;
@@ -385,9 +413,7 @@ ExtensionMethods
                 }
 #endif
             }
-#if !WEBCLIENT
-            message.Content = requestContent;
-#endif
+
             return message;
         }
 
