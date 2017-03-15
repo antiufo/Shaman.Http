@@ -11,13 +11,27 @@ namespace Shaman.Runtime
     {
 
         public DataTransferProgress(FileSize transferredData, FileSize? total, FileSize dataPerSecond)
+            : this(transferredData, total, dataPerSecond, null)
+        {
+        }
+
+        public DataTransferProgress(FileSize transferredData, FileSize? total, FileSize dataPerSecond, string description)
         {
             this.transferredData = transferredData;
             this.total = total;
             this.dataPerSecond = dataPerSecond;
+            this.description = description;
         }
 
+        public DataTransferProgress(string description)
+        {
+            this.transferredData = default(FileSize);
+            this.total = default(FileSize?);
+            this.dataPerSecond = default(FileSize);
+            this.description = description;
+        }
 
+        private string description;
         private FileSize? total;
         private FileSize transferredData;
         private FileSize dataPerSecond;
@@ -26,6 +40,7 @@ namespace Shaman.Runtime
         public FileSize TransferredData { get { return transferredData; } }
         public FileSize DataPerSecond { get { return dataPerSecond; } }
 
+        public string Description { get { return description; } }
         public override string ToString()
         {
             if (total == null) return transferredData.Bytes == 0 ? "0%" : (TransferredData.ToString() + " of Unknown (" + dataPerSecond.ToString() + " / sec)");
