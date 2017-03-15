@@ -71,5 +71,18 @@ namespace Shaman.Runtime
             }
             return isolatedCookies;
         }
+
+        public void AddRange(IEnumerable<KeyValuePair<string, string>> enumerable)
+        {
+            foreach (var item in enumerable)
+            {
+                _cookies[item.Key] = item.Value;
+            }
+        }
+
+        public void Add(string name, string value)
+        {
+            _cookies[name] = value;
+        }
     }
 }
