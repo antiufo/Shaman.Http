@@ -23,6 +23,7 @@ using HtmlNodeHashSet = System.Collections.Generic.HashSet<Shaman.Dom.HtmlNode>;
 #if !STANDALONE
 using HttpUtils = Shaman.Utils;
 using HttpExtensionMethods = Shaman.ExtensionMethods;
+using Shaman.Runtime.ReflectionExtensions;
 #endif
 
 namespace Shaman.Runtime
@@ -253,13 +254,38 @@ namespace Shaman.Runtime
             if (val != null)
 #endif
             {
-                var text = document.CreateTextNode();
 #if SALTARELLE
-                text.Text = Script.IsNullOrUndefined(val) ? string.Empty : val.ToString();
+                var v = Script.IsNullOrUndefined(val) ? null : val.ToString();
+                var rawval = val;
 #else
-                text.Text = Convert.ToString(val.Value);
+                var rawval = val.Value;
+                var v = Convert.ToString(rawval);
 #endif
-                el.AppendChild(text);
+                if (!string.IsNullOrEmpty(v))
+                {
+                    var text = document.CreateTextNode();
+                    text.Text = v;
+                    el.AppendChild(text);
+                }
+
+                string kind = null;
+
+#if SALTARELLE
+                if (rawval is bool) kind = "bool";
+                else if(rawval is double) kind = "number";
+                else if(Script.IsUndefined(rawval)) kind = "undefined";
+                else if(rawval == null) kind = "null";
+                else if(rawval == string.Empty) kind = "string";
+#else
+                var tokenKind = val.Type;
+                if (tokenKind == JTokenType.Boolean) kind = "bool";
+                else if (tokenKind == JTokenType.Float) kind = "number";
+                else if (tokenKind == JTokenType.Integer) kind = "number";
+                else if (tokenKind == JTokenType.Null) kind = "null";
+                else if (tokenKind == JTokenType.Undefined) kind = "undefined";
+                else if (string.IsNullOrEmpty(v)) kind = "string";
+#endif
+                if (kind != null) el.SetAttributeValue("json-kind", kind);
                 return el;
             }
 
@@ -329,18 +355,47 @@ namespace Shaman.Runtime
 #endif
 
         private static int registered;
-        internal static HtmlNode ReparseHtml(HtmlDocument doc, string html, HtmlDocument parentDocument)
+        internal static HtmlNode ReparseHtml(HtmlDocument doc, string html, HtmlDocument parentDocument, bool xml = false)
         {
-            if (object.ReferenceEquals(html, lastConvertedJsonString) && object.ReferenceEquals(parentDocument, lastConvertedJsonParentDocument) && lastConvertedJsonIndex == 0)
+            var kidx =xml ? -1 : 0;
+            if (object.ReferenceEquals(html, lastConvertedJsonString) && object.ReferenceEquals(parentDocument, lastConvertedJsonParentDocument) && lastConvertedJsonIndex == kidx)
                 return lastConvertedJsonHtml;
-
-            doc.LoadHtml("<reparsed-html>" + html + "</reparsed-html>");
-            lastConvertedJsonHtml = doc.DocumentNode.FirstChild;
-
-
+            //if (xml) doc.SetFieldOrProperty("_isHtml", false);
+            if (xml)
+            {
+                doc.OptionParseAsXml = true;
+                if (html.StartsWith("<?xml"))
+                {
+                    doc.LoadHtml(html);
+                    var z = doc.CreateElement("reparsed-xml");
+                    foreach (var item in doc.DocumentNode.ChildNodes.ToList())
+                    {
+                        z.AppendChild(item);
+                    }
+                    lastConvertedJsonHtml = z;
+                }
+                else
+                {
+                    doc.LoadHtml("<reparsed-xml>" + html + "</reparsed-xml>");
+                    lastConvertedJsonHtml = doc.DocumentNode.LastChild;
+                }
+            }
+            else
+            {
+                doc.LoadHtml("<reparsed-html>" + html + "</reparsed-html>");
+                lastConvertedJsonHtml = doc.DocumentNode.LastChild;
+            }
+            /*
+            if (xml && !doc.IsXml())
+            {
+                var z = doc.CreateElement("?xml");
+                z.SetAttributeValue("version", "1.0");
+                doc.DocumentNode.ChildNodes.Insert(0, z);
+            }
+            */
             lastConvertedJsonParentDocument = parentDocument;
             lastConvertedJsonString = html;
-            lastConvertedJsonIndex = 0;
+            lastConvertedJsonIndex = kidx;
 
             return lastConvertedJsonHtml;
         }
@@ -612,6 +667,21 @@ namespace Shaman.Runtime
                     });
                 };
             });
+
+
+
+            Parser.RegisterCustomSelector<HtmlNode>("reparse-xml", () =>
+            {
+                return nodes =>
+                {
+                    return nodes.Select(x =>
+                    {
+                        var doc = CreateDocument(x.OwnerDocument);
+                        return ReparseHtml(doc, x.InnerText, x.OwnerDocument, true);
+                    });
+                };
+            });
+
             Parser.RegisterCustomSelector<HtmlNode, string>("text-is", (text) =>
             {
                 if (text == string.Empty) text = null;
@@ -653,6 +723,27 @@ namespace Shaman.Runtime
                     });
                 };
             });
+
+
+
+            Parser.RegisterCustomSelector<HtmlNode, string>("direct-text-contains", (text) =>
+            {
+                if (string.IsNullOrEmpty(text)) throw new ArgumentException();
+
+                return nodes =>
+                {
+                    return nodes.Where(x =>
+                    {
+                        var count = x.ChildNodes.Count;
+                        if (count != 1) return false;
+                        var n = x.FirstChild as HtmlTextNode;
+                        if (n == null) return false;
+                        var found = n.Text;
+                        return found.Contains(text);
+                    });
+                };
+            });
+
             Parser.RegisterCustomSelector<HtmlNode, string>("first-text-is", (text) =>
             {
                 if (text == string.Empty) text = null;
@@ -785,7 +876,8 @@ namespace Shaman.Runtime
                     if (t != null)
                     {
                         if (lastTextSplitNode == t && lastTextSplitSeparator == separator) return lastTextSplitResult;
-                        var m = t.OwnerDocument.IsPlainText() ? ((HtmlTextNode)t.ChildNodes.Single()).Text : t.GetText();
+                        var m = t.OwnerDocument.IsPlainText() ? ((HtmlTextNode)t.FirstChild)?.Text : t.GetText();
+                        if (m == null) return Enumerable.Empty<HtmlNode>();
                         string[] parts;
                         if (separator.Length == 1)
                         {
@@ -1004,6 +1096,27 @@ namespace Shaman.Runtime
                 };
             });
 
+            Parser.RegisterCustomSelector<HtmlNode>("link-url", () =>
+            {
+                return nodes =>
+                {
+                    return nodes.Select(x =>
+                    {
+                        Uri u;
+                        if (x.TagName == "img")
+                        {
+                            u = x.TryGetImageUrl();
+                        }
+                        else
+                        {
+                            u = x.TryGetLinkUrl();
+                        }
+                        if (u == null) return null;
+                        if (!HttpUtils.IsHttp(u)) return null;
+                        return WrapText(x, u.AbsoluteUri);
+                    }).Where(x => x != null);
+                };
+            });
 
             Parser.RegisterCustomSelector<HtmlNode>("link-is-internal", () =>
             {
@@ -1127,10 +1240,10 @@ namespace Shaman.Runtime
                         var jattr = x.GetAttributeValue(attributeName);
                         if (string.IsNullOrEmpty(jattr)) return null;
 
-                        var startIndex = jattr.IndexOf(startToken);
-                        if (startIndex == -1) return null;
+                        var index = SkipJsonToken(jattr, startToken);
+                        if (index == -1) return null;
 
-                        return JsonToHtml(jattr, startIndex + startToken.Length, x.OwnerDocument);
+                        return JsonToHtml(jattr, index, x.OwnerDocument);
                     })
                     .WhereNotNull();
 
@@ -1147,9 +1260,9 @@ namespace Shaman.Runtime
                         var firstChild = f.FirstChild;
                         var content = firstChild != null && firstChild.NextSibling == null ? firstChild.InnerText : f.InnerText;
 
-                        var startIndex = content.IndexOf(startToken);
-                        if (startIndex == -1) return null;
-                        return JsonToHtml(content, startIndex + startToken.Length, f.OwnerDocument);
+                        var index = SkipJsonToken(content, startToken);
+                        if (index == -1) return null;
+                        return JsonToHtml(content, index, f.OwnerDocument);
                     })
                     .WhereNotNull();
                 };
@@ -1482,7 +1595,7 @@ namespace Shaman.Runtime
                 {
                     return nodes.Select(x =>
                     {
-                        var comment = (HtmlCommentNode) x.ChildNodes.FirstOrDefault(y => y.NodeType == HtmlNodeType.Comment);
+                        var comment = (HtmlCommentNode)x.ChildNodes.FirstOrDefault(y => y.NodeType == HtmlNodeType.Comment);
                         if (comment == null) return null;
                         var doc = CreateDocument(x.OwnerDocument);
                         var c = comment.Comment.AsValueString();
@@ -1493,6 +1606,33 @@ namespace Shaman.Runtime
                     }).WhereNotNull();
                 };
             });
+
+            Parser.RegisterCustomSelector<HtmlNode>("to-plain-text", () =>
+            {
+                return nodes =>
+                {
+                    return nodes.Select(x =>
+                    {
+                        var text = x.GetText();
+                        if (text == null) return null;
+                        return WrapText(x, text);
+                    }).WhereNotNull();
+                };
+            });
+
+
+        }
+
+        private static int SkipJsonToken(string content, string startToken)
+        {
+            if (startToken[0] == '§')
+            {
+                var match = Regex.Match(content, startToken.SubstringCached(1));
+                if (match == null || !match.Success) return -1;
+                return match.Index + match.Length;
+            }
+            var idx = content.IndexOf(startToken);
+            return idx != -1 ? idx + startToken.Length : -1;
         }
 
         private static HtmlNode CloneWithout(HtmlNode x, HtmlNodeHashSet torebuild, List<HtmlNode> excluded)
