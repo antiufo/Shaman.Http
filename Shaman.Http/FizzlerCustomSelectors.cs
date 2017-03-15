@@ -1621,7 +1621,28 @@ namespace Shaman.Runtime
             });
 
 
+
+            Parser.RegisterCustomSelector<HtmlNode>("even", () =>
+            {
+                return nodes =>
+                {
+                    return nodes.Where((x, i) => i % 2 == 0);
+                };
+            });
+
+            Parser.RegisterCustomSelector<HtmlNode>("odd", () =>
+            {
+                return nodes =>
+                {
+                    return nodes.Where((x, i) => i % 2 == 1);
+                };
+            });
+
+
         }
+
+
+
 
         private static int SkipJsonToken(string content, string startToken)
         {
