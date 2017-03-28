@@ -22,6 +22,18 @@ namespace Shaman.Runtime
 #endif
 
 
+        public IsolatedCookieContainer()
+        {
+        }
+
+        public IsolatedCookieContainer(IEnumerable<KeyValuePair<string, string>> cookies)
+        {
+            foreach (var item in cookies)
+            {
+                Add(item.Key, item.Value);
+            }
+        }
+
         internal void MaybeSave()
         {
             if (CacheVaryKey == null) return;
