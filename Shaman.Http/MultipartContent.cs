@@ -35,7 +35,9 @@ using System.Globalization;
 using System.Net.Http.Headers;
 using System.Linq;
 using System.Text;
+using System.Net;
 using Shaman;
+using Shaman.Runtime;
 
 namespace System.Net.Http
 {

@@ -30,6 +30,7 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Shaman.Runtime;
 
 namespace System.Net.Http
 {
