@@ -442,13 +442,14 @@ namespace Shaman.Types
             return FromUrl(url, null, false);
         }
 
-#if !STANDALONE
-
         public static WebFile FromUrlUntracked(Uri url)
         {
+#if STANDALONE
+            return FromUrl(url);
+#else
             return FromUrlUntracked(url, null, false);
-        }
 #endif
+        }
 
 
 
