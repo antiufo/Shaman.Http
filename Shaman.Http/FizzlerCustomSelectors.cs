@@ -259,7 +259,7 @@ namespace Shaman.Runtime
                 var rawval = val;
 #else
                 var rawval = val.Value;
-                var v = Convert.ToString(rawval);
+                var v = rawval is bool b ? (b ? "true" : "false") : Convert.ToString(rawval);
 #endif
                 if (!string.IsNullOrEmpty(v))
                 {
@@ -604,6 +604,20 @@ namespace Shaman.Runtime
                         var z = x.TryGetValue();
                         if (z == null) return null;
                         return WrapText(x, HttpUtils.UnescapeDataString(z));
+                    }).Where(x => x != null);
+                };
+            });
+
+            Parser.RegisterCustomSelector<HtmlNode>("make-absolute", () =>
+            {
+                return nodes =>
+                {
+                    return nodes.Select(x =>
+                    {
+                        var z = x.TryGetValue();
+                        if (z == null) return null;
+
+                        return WrapText(x, HttpUtils.GetAbsoluteUriAsString(x.OwnerDocument.GetLazyBaseUrl(), z));
                     }).Where(x => x != null);
                 };
             });
@@ -1637,7 +1651,34 @@ namespace Shaman.Runtime
                     return nodes.Where((x, i) => i % 2 == 1);
                 };
             });
+            Parser.RegisterCustomSelector<HtmlNode>("radio", () =>
+            {
+                return nodes =>
+                {
+                    return nodes.Where(x => x.GetAttributeValue("type") == "radio");
+                };
+            });
 
+#if !STANDALONE
+            Parser.RegisterCustomSelector<HtmlNode>("parse-date", () =>
+            {
+                return nodes =>
+                {
+                    var f = nodes.FirstOrDefault();
+                    var text = f?.GetText();
+                    if (text != null)
+                    {
+                        var d = Conversions.TryParseDateTime(text, null, true, Utils.TryGetPageRetrievalDate(f.OwnerDocument));
+                        if (d != null)
+                        {
+                            return new[] { WrapText(f, d.Value.ToString("yyyy-MM-dd HH:mm:ss")) };
+                        }
+                    }
+                    return Enumerable.Empty<HtmlNode>();
+                };
+            });
+
+#endif
 
         }
 
@@ -1649,6 +1690,14 @@ namespace Shaman.Runtime
             if (startToken[0] == '§')
             {
                 var match = Regex.Match(content, startToken.SubstringCached(1));
+                if (match == null || !match.Success) return -1;
+                return match.Index + match.Length;
+            }
+            if (startToken[0] == '£')
+            {
+
+                var regex = @"['""]" + startToken.SubstringCached(1) + @"['""]\s*:";
+                var match = Regex.Match(content, regex);
                 if (match == null || !match.Success) return -1;
                 return match.Index + match.Length;
             }
