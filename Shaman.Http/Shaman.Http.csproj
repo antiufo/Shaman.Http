@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>HTTP and HTML processing library</Description>
+    <VersionPrefix>1.0.1.7</VersionPrefix>
+    <Authors>Andrea Martinelli</Authors>
+    <TargetFrameworks>net46;netstandard1.3</TargetFrameworks>
+    <DefineConstants>$(DefineConstants);DESKTOP;STANDALONE;SMALL_LIB_AWDEE;SHAMAN_CORE;NATIVE_HTTP;SHAMAN;SKIP_FORMAT_FUNCTION</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>Shaman.Http</AssemblyName>
+    <AssemblyOriginatorKeyFile>ShamanOpenSourceKey.snk</AssemblyOriginatorKeyFile>
+    <SignAssembly>true</SignAssembly>
+    <PublicSign Condition=" '$(OS)' != 'Windows_NT' ">true</PublicSign>
+    <PackageId>Shaman.Http</PackageId>
+    <PackageTags>HTTP;HTML;DOM;JSON</PackageTags>
+    <PackageIconUrl>http://shaman.io/images/shaman-nuget-icon.png</PackageIconUrl>
+    <PackageProjectUrl>http://shaman.io/</PackageProjectUrl>
+    <PackageTargetFallback Condition=" '$(TargetFramework)' == 'netstandard1.3' ">$(PackageTargetFallback);portable-net45+win8+wp8+wpa81</PackageTargetFallback>
+    <GenerateAssemblyVersionAttribute>false</GenerateAssemblyVersionAttribute>
+  </PropertyGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <PackageReference Include="Shaman.Fizzler" Version="1.0.1.11" />
+    <PackageReference Include="Shaman.Dom" Version="1.0.1.20" />
+    <PackageReference Include="Newtonsoft.Json" Version="9.0.1" />
+    <PackageReference Include="Shaman.ValueString" Version="1.0.2.31" />
+    <PackageReference Include="Shaman.Configuration.Metadata" Version="1.0.1.2" />
+    <PackageReference Include="Shaman.FileSystem" Version="1.0.1.2" />
+    <PackageReference Include="Shaman.FileSize" Version="1.0.1.2" />
+    <PackageReference Include="Shaman.CommonExtensions" Version="1.0.1.6" />
+    <PackageReference Include="Shaman.BlobStore" Version="1.0.1.9" />
+  </ItemGroup>
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net46' ">
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System" />
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+  <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard1.3' ">
+    <PackageReference Include="System.Net.Http" Version="4.1.1" />
+    <PackageReference Include="System.Net.Requests" Version="4.0.11" />
+    <PackageReference Include="System.IO.Compression" Version="4.1" />
+    <PackageReference Include="System.Threading.Timer" Version="4.0.1" />
+    <PackageReference Include="System.Reflection" Version="4.1" />
+    <PackageReference Include="System.Reflection.TypeExtensions" Version="4.1.0" />
+    <PackageReference Include="System.Threading.Thread" Version="4.0.0" />
+    <PackageReference Include="System.Dynamic.Runtime" Version="4.0.11" />
+    <PackageReference Include="System.Text.RegularExpressions" Version="4.1.0" />
+  </ItemGroup>
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'netstandard1.3' ">
+    <DefineConstants>$(DefineConstants);CORECLR</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net35' ">
+    <PackageReference Include="Shaman.AsyncBridge.Extensions" Version="1.0.0-beta-4642" />
+    <Reference Include="System" />
+  </ItemGroup>
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net35' ">
+    <DefineConstants>$(DefineConstants);NET35;WEBCLIENT</DefineConstants>
+  </PropertyGroup>
+</Project>
