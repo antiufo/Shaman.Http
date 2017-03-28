@@ -97,12 +97,17 @@ namespace Shaman
 
         }
 
-        public void AppendCookies(IsolatedCookieContainer cookies)
+        public void AppendCookies(IEnumerable<KeyValuePair<string, string>> cookies)
         {
-            foreach (var item in cookies.Cookies)
+            foreach (var item in cookies)
             {
                 AppendFragmentParameter("$cookie-" + item.Key, item.Value);
             }
+        }
+
+        public void AppendCookies(IsolatedCookieContainer cookies)
+        {
+            AppendCookies(cookies.Cookies);
         }
 
         public Uri PathConsistentUrl
@@ -274,6 +279,7 @@ namespace Shaman
         public void AppendQueryParameter(string name, string value)
         {
             LoadInitialQueryParameters();
+            RemoveQueryParameter(name);
             queryParameters.Add(new KeyValuePair<string, string>(name, value));
         }
 
@@ -305,6 +311,7 @@ namespace Shaman
         public void AppendFragmentParameter(string name, string value)
         {
             LoadInitialFragmentParameters();
+            RemoveFragmentParameter(name);
             fragmentParameters.Add(new KeyValuePair<string, string>(name, value));
         }
 
@@ -323,6 +330,20 @@ namespace Shaman
                     fragmentParameters = url.GetFragmentParameters().ToList();
                 }
                 nextFragmentParameterToAdd = fragmentParameters.Count;
+            }
+        }
+
+        public void RemoveQueryParameter(string name)
+        {
+            LoadInitialQueryParameters();
+            LoadInitialFragmentParameters();
+            var idx = queryParameters.FindIndex(x => x.Key == name);
+            if (idx != -1)
+            {
+                queryParameters.RemoveAt(idx);
+                url = url.GetLeftPart(UriPartial.Path).AsUri();
+                nextQueryParameterToAdd = 0;
+                nextFragmentParameterToAdd = 0;
             }
         }
 
@@ -493,5 +514,7 @@ namespace Shaman
 
             return true;
         }
+
+      
     }
 }
