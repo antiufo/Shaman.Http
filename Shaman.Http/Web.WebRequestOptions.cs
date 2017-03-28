@@ -158,6 +158,14 @@ namespace Xamasoft
 
         }
 
+
+        public bool AllowCachingEvenWithCustomRequestOptions;
+
+
+#if !NET35
+        public System.Net.Http.HttpClient CustomHttpClient;
+#endif
+
         [StaticFieldCategory(StaticFieldCategory.Stable)]
         private static WebRequestOptions defaultOptions = new WebRequestOptions(true);
         public static WebRequestOptions DefaultOptions
