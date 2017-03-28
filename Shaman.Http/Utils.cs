@@ -101,14 +101,14 @@ namespace Shaman
 
         public static void AssumeCompleted(this Task task)
         {
-            if (task.Exception != null) throw task.Exception;
+            if (task.Exception != null) throw task.Exception.Rethrow();
             if (task.IsCanceled) throw new TaskCanceledException(task);
             if (task.Status != TaskStatus.RanToCompletion) throw new InvalidOperationException();
         }
 
         public static T AssumeCompleted<T>(this Task<T> task)
         {
-            if (task.Exception != null) throw task.Exception;
+            if (task.Exception != null) throw task.Exception.Rethrow();
             if (task.IsCanceled) throw new TaskCanceledException(task);
             if (task.Status != TaskStatus.RanToCompletion) throw new InvalidOperationException();
             return task.Result;
