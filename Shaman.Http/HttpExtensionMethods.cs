@@ -151,25 +151,7 @@ namespace Shaman
 
                         if (info.Exception != null)
                         {
-                            var webex = info.Exception as WebException;
-                            if (webex == null || webex.Status != HttpUtils.Error_UnexpectedRedirect)
-                            {
-                                using (info.Response)
-                                {
-                                    var errorSelector = metaParameters.TryGetValue("$error-status-selector") ?? metaParameters.TryGetValue("$error-selector");
-                                    if (errorSelector != null && info.Response != null)
-                                    {
-                                        var parsed = await ParseHtmlAsync(info, null, null, options, metaParameters, url);
-                                        var err = parsed.TryGetValue(errorSelector);
-                                        if (err != null)
-                                        {
-                                            throw new WebException("The page reports: " + err, info.Exception);
-                                        }
-                                    }
-                                    throw info.Exception;
-                                }
-
-                            }
+                            await CheckErrorSelectorAsync(url, info, options, metaParameters);
 
                             if (info.Response != null)
                             {
@@ -271,6 +253,35 @@ namespace Shaman
 
         }
 
+        internal static async Task CheckErrorSelectorAsync(LazyUri url, HttpResponseInfo info, WebRequestOptions options,
+#if NET35
+        IDictionary<string, string> metaParameters,
+#else
+        IReadOnlyDictionary<string, string> metaParameters,
+#endif
+            bool synchronous = false
+        )
+        {
+            var webex = info.Exception as WebException;
+            if (webex == null || webex.Status != HttpUtils.Error_UnexpectedRedirect)
+            {
+                using (info.Response)
+                {
+                    var errorSelector = metaParameters.TryGetValue("$error-status-selector") ?? metaParameters.TryGetValue("$error-selector");
+                    if (errorSelector != null && info.Response != null)
+                    {
+                        var parsed = await ParseHtmlAsync(info, null, null, options, metaParameters, url, synchronous);
+                        var err = parsed.TryGetValue(errorSelector);
+                        if (err != null)
+                        {
+                            throw new WebException("The page reports: " + err, info.Exception);
+                        }
+                    }
+                    throw info.Exception.Rethrow();
+                }
+
+            }
+        }
 
         public static string GetCookieValue(this System.Net.CookieCollection cookies, string name)
         {
@@ -300,13 +311,13 @@ namespace Shaman
 
 
 
-        private static async Task<HtmlNode> ParseHtmlAsync(HttpResponseInfo info, Uri redirectLocation, WebCache cacheData, WebRequestOptions options,
+        internal static async Task<HtmlNode> ParseHtmlAsync(HttpResponseInfo info, Uri redirectLocation, WebCache cacheData, WebRequestOptions options,
 #if NET35
         IDictionary<string, string> metaParameters,
 #else
         IReadOnlyDictionary<string, string> metaParameters,
 #endif
-        LazyUri url)
+        LazyUri url, bool synchronous = false)
         {
 
 
@@ -377,7 +388,7 @@ namespace Shaman
 
                 if (contentType != null && contentType.StartsWith("image/")) throw new NotSupportedResponseException(contentType, url);
 
-                await TaskEx.Run(
+                var readfunc = new Func<Task>(
 #if !NET35
                     async
 #endif
@@ -389,9 +400,17 @@ namespace Shaman
 #if WEBCLIENT
                         var stream = content.GetResponseStream();
 #else
-                        await content.LoadIntoBufferAsync().ConfigureAwait(false);
-
-                        var stream = await content.ReadAsStreamAsync().ConfigureAwait(false);
+                        Stream stream;
+                        if (synchronous)
+                        {
+                            content.LoadIntoBufferAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+                            stream = content.ReadAsStreamAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+                        }
+                        else
+                        {
+                            await content.LoadIntoBufferAsync().ConfigureAwait(false);
+                            stream = await content.ReadAsStreamAsync().ConfigureAwait(false);
+                        }
 #endif
 
                         lazy = new LazyTextReader(stream, initialEncoding);
@@ -585,6 +604,8 @@ namespace Shaman
                     }
                 });
 
+                if (synchronous) readfunc().AssumeCompleted();
+                else await TaskEx.Run(readfunc);
 
                 // if (redirectLocation == null) html = (await response.Content.ReadAsStringAsync()).AsHtmlDocumentNode();
 
@@ -595,8 +616,10 @@ namespace Shaman
         internal class HttpRequestMessageBox : IDisposable
         {
             public HttpRequestMessage Message;
+            public HttpRequestMessage PrebuiltRequest;
+            public HttpResponseMessage PrebuiltResponse;
 
-           public void Dispose()
+            public void Dispose()
             {
                 if (Message != null)
                 {
@@ -744,7 +767,7 @@ namespace Shaman
 #if DESKTOP
                         Caching.SaveCache(cachePath, result.CacheData);
 #endif
-                        throw result.Exception;
+                        throw result.Exception.Rethrow();
                     }
                     var page = result.Node;
                     var redirectLocation = result.RedirectUrl;
@@ -958,7 +981,7 @@ namespace Shaman
         public static async Task<HtmlNode> GetHtmlNodeAsync(this LazyUri url, WebRequestOptions options, Runtime.CookieContainer cookieContainer)
 #endif
         {
-            var hasExtraOptions = options != null;
+            var hasExtraOptions = options != null && !options.AllowCachingEvenWithCustomRequestOptions;
             if (options == null) options = new WebRequestOptions();
 
             var metaParameters = ProcessMetaParameters(url, options) ?? new Dictionary<string, string>();
@@ -1210,15 +1233,20 @@ namespace Shaman
 
             return default(HttpStatusCode);
         }
-        
+
 
 #endif
 
 
-                    public static bool IsHostedOn(this Uri url, string baseHost)
+        public static bool IsHostedOn(this Uri url, string baseHost)
         {
 
             return IsHostedOn(url.Host, baseHost);
+        }
+
+        public static bool IsHostedOnAndPathStartsWith(this Uri url, string baseHost, string pathPrefix)
+        {
+            return IsHostedOn(url.Host, baseHost) && url.AbsolutePath.StartsWith(pathPrefix);
         }
 #if !SALTARELLE
         public static bool IsHostedOn(this LazyUri url, string baseHost)
@@ -2177,6 +2205,10 @@ namespace Shaman
                         {
                             options.WaitBefore = TimeSpan.FromMilliseconds(int.Parse(item.Value));
                         }
+                        else if (key == "$xhr-request" && item.Value == "1")
+                        {
+                            options.AddHeader("X-Requested-With", "XMLHttpRequest");
+                        }
                     }
                     if (jsonPostObjects != null)
                     {
@@ -2606,6 +2638,11 @@ namespace Shaman
             if (old == null || old.Length >= mime.Length) extensionToMime[extension] = mime;
         }
 
+        public static void Report(this IProgress<DataTransferProgress> progress, string status)
+        {
+            if (progress == null) return;
+            progress.Report(new DataTransferProgress(status));
+        }
 
 
     }

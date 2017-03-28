@@ -60,13 +60,16 @@ ExtensionMethods
             public Exception Exception;
         }
 
-
+#if !NET35
+        private static HttpClient defaultHttpClient;
+#endif
 
         [AllowNumericLiterals]
-        internal static async Task<HttpResponseInfo> SendAsync(this LazyUri url, WebRequestOptions options, HttpRequestMessageBox messageBox, bool alwaysCatchAndForbidRedirects = false, bool keepResponseAliveOnError = false)
+        internal static async Task<HttpResponseInfo> SendAsync(this LazyUri url, WebRequestOptions options, HttpRequestMessageBox messageBox, bool alwaysCatchAndForbidRedirects = false, bool keepResponseAliveOnError = false, bool synchronous = false)
         {
             HttpUtils.EnsureInitialized();
-            await Utils.CheckLocalFileAccessAsync(url);
+            if(!synchronous)
+                await Utils.CheckLocalFileAccessAsync(url);
             Utils.RaiseWebRequestEvent(url, false);
             HttpResponseMessage result = null;
             LazyUri previousResponse2 = null;
@@ -74,7 +77,7 @@ ExtensionMethods
             {
 
                 if (options == WebRequestOptions.DefaultOptions) throw new ArgumentException();
-                if (options.WaitBefore.Ticks != 0)
+                if (options.WaitBefore.Ticks != 0 &&  !synchronous)
                     await TaskEx.Delay(options.WaitBefore);
                 LazyUri previousResponse1 = null;
                 previousResponse2 = url.Clone();
@@ -83,12 +86,12 @@ ExtensionMethods
                 while (true)
                 {
 #if WEBCLIENT
-                    HttpContent requestContent;
+                    HttpContent requestContent = null;
 #endif
-                    var message = CreateRequestInternal(previousResponse2, options, true, redirectIndex
+                    var message = messageBox?.PrebuiltRequest ?? CreateRequestInternal(previousResponse2, options, true, redirectIndex
 #if WEBCLIENT
                     , out requestContent
-#endif              
+#endif
                     );
                     if (messageBox != null)
                     {
@@ -108,9 +111,18 @@ ExtensionMethods
                     }
                     result = (HttpWebResponse)await message.GetResponseAsync();
 #else
-                    using (var client = CreateHttpClient())
+                    message.Properties["ShamanURL"] = url;
+                    if (options.CustomHttpClient != null)
                     {
-                        result = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead);
+                        result = await options.CustomHttpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead);
+
+                    }
+                    else
+                    {
+                        if (defaultHttpClient == null)
+                            defaultHttpClient = CreateHttpClient();
+                        
+                        result = messageBox?.PrebuiltResponse ?? await defaultHttpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead);
                     }
 #endif
 
@@ -159,11 +171,14 @@ ExtensionMethods
                             {
                                 if (url.GetFragmentParameter("$allow-same-redirect") == "1")
                                 {
+                                    if (!synchronous)
+                                    {
 #if NET35
-                                    await TaskEx.Delay(Configuration_SameRedirectDelayTimeMs);
+                                        await TaskEx.Delay(Configuration_SameRedirectDelayTimeMs);
 #else
-                                    await Task.Delay(Configuration_SameRedirectDelayTimeMs);
+                                        await Task.Delay(Configuration_SameRedirectDelayTimeMs);
 #endif
+                                    }
                                 }
                                 else
                                 {
@@ -189,7 +204,7 @@ ExtensionMethods
 #endif
                 if (alwaysCatchAndForbidRedirects) return new HttpResponseInfo() { Exception = ex, Response = result, RespondingUrl = previousResponse2 };
                 else if (ex == orig) throw;
-                else throw ex;
+                else throw ex.Rethrow();
             }
         }
 
@@ -437,7 +452,7 @@ ExtensionMethods
 #if NET35
             internal
 #endif
-            protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext context)
+            protected override Task SerializeToStreamAsync(Stream stream, TransportContext context)
             {
                 return TaskEx.Run(() => writer(stream));
             }
