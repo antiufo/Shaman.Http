@@ -114,6 +114,7 @@ namespace Shaman
         Credentials credentialsForVary, bool needsCache)
         {
 
+        
             var messageBox = new HttpRequestMessageBox();
             var noredir = metaParameters.TryGetValue("$noredir") == "1";
             HttpResponseInfo info = null;
@@ -191,7 +192,6 @@ namespace Shaman
                 {
                     throw ex.InnerException;
                 }
-
 
                 using (var response = info.Response)
                 {
@@ -298,16 +298,15 @@ namespace Shaman
         }
 #endif
 
-//        internal static void AppendUriEncoded(this NakedStringBuilder sb, string text)
-//        {
-//#if DESKTOP
-//            sb.Data = DirectUriEscapeChar.EscapeString(text, 0, text.Length, sb.Data, ref sb.Length, false, DirectUriEscapeChar.c_DummyChar, DirectUriEscapeChar.c_DummyChar, DirectUriEscapeChar.c_DummyChar);
-//#else
-//            var s = Uri.EscapeDataString(text);
-//            sb.Append(text);
-//#endif
-//        }
-     
+        //        internal static void AppendUriEncoded(this NakedStringBuilder sb, string text)
+        //        {
+        //#if DESKTOP
+        //            sb.Data = DirectUriEscapeChar.EscapeString(text, 0, text.Length, sb.Data, ref sb.Length, false, DirectUriEscapeChar.c_DummyChar, DirectUriEscapeChar.c_DummyChar, DirectUriEscapeChar.c_DummyChar);
+        //#else
+        //            var s = Uri.EscapeDataString(text);
+        //            sb.Append(text);
+        //#endif
+        //        }
 
 
 
@@ -319,7 +318,6 @@ namespace Shaman
 #endif
         LazyUri url, bool synchronous = false)
         {
-
 
             HtmlNode html = null;
 
@@ -411,8 +409,8 @@ namespace Shaman
                             await content.LoadIntoBufferAsync().ConfigureAwait(false);
                             stream = await content.ReadAsStreamAsync().ConfigureAwait(false);
                         }
-#endif
 
+#endif
                         lazy = new LazyTextReader(stream, initialEncoding);
                         if (!plainText && lazy.ContainsIndex(3) && lazy[0] == '%' && lazy[1] == 'P' && lazy[2] == 'D' && lazy[3] == 'F')
                             throw new NotSupportedResponseException("application/pdf", url);
@@ -698,8 +696,12 @@ namespace Shaman
                     if (data != null && (data.ExceptionType == null || !Caching.IgnoreCachedFailedRequests))
                     {
                         Utils.RaiseWebRequestEvent(lazyurl, true);
-
-                        if (data.ExceptionType != null) throw Caching.RebuildException(data, lazyurl);
+                        if (data.ExceptionType != null)
+                        {
+                            var ex = Caching.RebuildException(data, lazyurl); 
+                            preprocessedOptions.HtmlRetrieved?.Invoke(null, (data.PageUrl ?? data.RedirectUrl ?? data.Url).Url, ex);
+                            ex.Rethrow();
+                        }
                         var jsexecResults = data.JsExecutionResults != null ? JsonConvert.DeserializeObject<PageExecutionResults>(data.JsExecutionResults) : null;
                         node = data.RecreateNode(lazyurl, preprocessedOptions, cachePath);
                         node.OwnerDocument.Tag = jsexecResults;
@@ -732,6 +734,7 @@ namespace Shaman
                         if (cachePath != null)
                         {
                             var t = Caching.GetWebCacheForException(ex, lazyurl, -1);
+                            preprocessedOptions.HtmlRetrieved?.Invoke(null, lazyurl.Url, ex);
                             Caching.SaveCache(cachePath, t);
                         }
                         throw;
@@ -767,109 +770,118 @@ namespace Shaman
 #if DESKTOP
                         Caching.SaveCache(cachePath, result.CacheData);
 #endif
+                        preprocessedOptions.HtmlRetrieved?.Invoke(null, lazyurl.Url, result.Exception);
                         throw result.Exception.Rethrow();
                     }
                     var page = result.Node;
                     var redirectLocation = result.RedirectUrl;
-                    if (page != null)
+
+                    try
                     {
-
-                        if (!hasProcessedFormButton)
+                        if (page != null)
                         {
-                            var formButtonName = metaParameters.TryGetValue("$formbutton");
-                            var formButtonSelector = metaParameters.TryGetValue("$formbuttonsel");
-                            if (formButtonSelector != null || formButtonName != null)
+
+                            if (!hasProcessedFormButton)
                             {
-                                HtmlNode button;
-                                if (formButtonSelector != null)
+                                var formButtonName = metaParameters.TryGetValue("$formbutton");
+                                var formButtonSelector = metaParameters.TryGetValue("$formbuttonsel");
+                                if (formButtonSelector != null || formButtonName != null)
                                 {
-                                    throw new ArgumentException("$formbuttonsel is only allowed when $js is set to 1. Use $formbutton instead (with the name of the button instead of its selector)");
-                                }
-                                else if (formButtonName != null)
-                                {
-                                    button = page.DescendantsAndSelf().FirstOrDefault(x => x.Id == formButtonName || x.GetAttributeValue("name") == formButtonName);
-                                    if (button == null) throw new ExtractionException(message: "No element has the name or ID specified by the $formbutton metaparameter.");
-                                }
-                                else
-                                {
-                                    throw Sanity.ShouldntHaveHappened();
-                                }
-
-                                if (metaParameters.Any(x => x.Key.StartsWith("$formsel-"))) throw new ArgumentException("$formsel-* metaparameters are only allowed when $js is set to 1. Use $form-* instead (with the name of the field instead of its selector)");
-
-
-
-                                var parameters = metaParameters.Where(x => x.Key.StartsWith("$form-")).Select(x => new KeyValuePair<string, string>(x.Key.Substring(6), x.Value)).ToList();
-                                var tuple = HttpUtils.SetUpOptionsFromFormButton(button, preprocessedOptions, parameters);
-                                lazyurl = tuple.Url;
-                                // TODO tuple.Item2 is ignored
-                                var preserve = metaParameters.Where(x => x.Key == "$forbid-selector" || x.Key == "$assert-selector" || x.Key == "$error-selector" || x.Key == "$error-status-selector").ToList();
-                                metaParameters = ProcessMetaParameters(lazyurl, preprocessedOptions);
-                                //Console.WriteLine(lazyurl);
-                                
-                                if (preserve.Any())
-                                {
-                                    var m = metaParameters.ToDictionary(x => x.Key, x => x.Value);
-                                    foreach (var item in preserve)
+                                    HtmlNode button;
+                                    if (formButtonSelector != null)
                                     {
-                                        m[item.Key] = item.Value;
+                                        throw new ArgumentException("$formbuttonsel is only allowed when $js is set to 1. Use $formbutton instead (with the name of the button instead of its selector)");
                                     }
-                                    metaParameters = m;
+                                    else if (formButtonName != null)
+                                    {
+                                        button = page.DescendantsAndSelf().FirstOrDefault(x => x.Id == formButtonName || x.GetAttributeValue("name") == formButtonName);
+                                        if (button == null) throw new ExtractionException(message: "No element has the name or ID specified by the $formbutton metaparameter.");
+                                    }
+                                    else
+                                    {
+                                        throw Sanity.ShouldntHaveHappened();
+                                    }
+
+                                    if (metaParameters.Any(x => x.Key.StartsWith("$formsel-"))) throw new ArgumentException("$formsel-* metaparameters are only allowed when $js is set to 1. Use $form-* instead (with the name of the field instead of its selector)");
+
+
+
+                                    var parameters = metaParameters.Where(x => x.Key.StartsWith("$form-")).Select(x => new KeyValuePair<string, string>(x.Key.Substring(6), x.Value)).ToList();
+                                    var tuple = HttpUtils.SetUpOptionsFromFormButton(button, preprocessedOptions, parameters);
+                                    lazyurl = tuple.Url;
+                                    // TODO tuple.Item2 is ignored
+                                    var preserve = metaParameters.Where(x => x.Key == "$forbid-selector" || x.Key == "$assert-selector" || x.Key == "$error-selector" || x.Key == "$error-status-selector").ToList();
+                                    metaParameters = ProcessMetaParameters(lazyurl, preprocessedOptions);
+                                    //Console.WriteLine(lazyurl);
+
+                                    if (preserve.Any())
+                                    {
+                                        var m = metaParameters.ToDictionary(x => x.Key, x => x.Value);
+                                        foreach (var item in preserve)
+                                        {
+                                            m[item.Key] = item.Value;
+                                        }
+                                        metaParameters = m;
+                                    }
+                                    continue;
                                 }
+
+                            }
+
+                            EnsurePageConstraints(page, metaParameters);
+                            additionalChecks?.Invoke(page);
+                            MaybeKeepReturnedPage(lazyurl, page);
+                        }
+
+                        if (redirectLocation == null)
+                        {
+                            //var html = page.ChildNodes.FirstOrDefault(x => x.Name == "html");
+                            //var head = (html ?? page).ChildNodes.FirstOrDefault(x => x.Name == "head");
+                            var follownoscript = metaParameters.TryGetValue("follownoscript") == "1";
+                            var metaRedirect = page.Descendants().FirstOrDefault(x => x.TagName == "meta" && string.Equals(x.GetAttributeValue("http-equiv"), "refresh", StringComparison.OrdinalIgnoreCase) && (follownoscript || !x.Ancestors().Any(y => y.TagName == "noscript")));
+                            if (metaRedirect != null)
+                            {
+                                var value = metaRedirect.GetAttributeValue("content");
+                                if (value != null)
+                                {
+                                    var urlString = value.TryCapture(@"(?:url|URL|Url)\s*=\s*[\'""]?(.+?)[\'""]?\s*\;?\s*$");
+                                    if (urlString != null)
+                                    {
+                                        var time = value.TryCapture(@"^\s*(\d+)[\s\,\;]");
+                                        if (time == null || int.Parse(time) <= 10)
+                                            redirectLocation = new Uri(lazyurl.PathConsistentUrl, urlString);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (redirectLocation != null)
+                        {
+                            if (metaParameters.TryGetValue("$noredir") == "1")
+                            {
+                                page.OwnerDocument.DocumentNode.SetAttributeValue("redirect-url", redirectLocation.AbsoluteUri);
+                            }
+                            else
+                            {
+                                if (!preprocessedOptions.AllowRedirects)
+                                    throw new WebException("An unexpected redirect was received from the server.", HttpUtils.Error_UnexpectedRedirect);
+                                numRedirects++;
+                                if (numRedirects >= 5) throw new WebException("The maximum number of http-equiv redirects has been reached.", HttpUtils.Error_MaximumNumberOfRedirectsExceeded);
+
+                                preprocessedOptions.PostData = null;
+                                preprocessedOptions.PostString = null;
+                                lazyurl = new LazyUri(redirectLocation);
                                 continue;
                             }
-
                         }
 
-                        EnsurePageConstraints(page, metaParameters);
-                        additionalChecks?.Invoke(page);
-                        MaybeKeepReturnedPage(lazyurl, page);
+                        page.OwnerDocument.DocumentNode.SetAttributeValue("requested-url", originalLazy.AbsoluteUri);
                     }
-
-                    if (redirectLocation == null)
+                    catch (Exception ex) when (preprocessedOptions.HtmlRetrieved != null)
                     {
-                        //var html = page.ChildNodes.FirstOrDefault(x => x.Name == "html");
-                        //var head = (html ?? page).ChildNodes.FirstOrDefault(x => x.Name == "head");
-                        var follownoscript = metaParameters.TryGetValue("follownoscript") == "1";
-                        var metaRedirect = page.Descendants().FirstOrDefault(x => x.TagName == "meta" && string.Equals(x.GetAttributeValue("http-equiv"), "refresh", StringComparison.OrdinalIgnoreCase) && (follownoscript || !x.Ancestors().Any(y => y.TagName == "noscript")));
-                        if (metaRedirect != null)
-                        {
-                            var value = metaRedirect.GetAttributeValue("content");
-                            if (value != null)
-                            {
-                                var urlString = value.TryCapture(@"(?:url|URL|Url)\s*=\s*[\'""]?(.+?)[\'""]?\s*\;?\s*$");
-                                if (urlString != null)
-                                {
-                                    var time = value.TryCapture(@"^\s*(\d+)[\s\,\;]");
-                                    if (time == null || int.Parse(time) <= 10)
-                                        redirectLocation = new Uri(lazyurl.PathConsistentUrl, urlString);
-                                }
-                            }
-                        }
+                        preprocessedOptions.HtmlRetrieved(null, lazyurl.Url, ex);
+                        throw;
                     }
-
-                    if (redirectLocation != null)
-                    {
-                        if (metaParameters.TryGetValue("$noredir") == "1")
-                        {
-                            page.OwnerDocument.DocumentNode.SetAttributeValue("redirect-url", redirectLocation.AbsoluteUri);
-                        }
-                        else
-                        {
-                            if (!preprocessedOptions.AllowRedirects)
-                                throw new WebException("An unexpected redirect was received from the server.", HttpUtils.Error_UnexpectedRedirect);
-                            numRedirects++;
-                            if (numRedirects >= 5) throw new WebException("The maximum number of http-equiv redirects has been reached.", HttpUtils.Error_MaximumNumberOfRedirectsExceeded);
-
-                            preprocessedOptions.PostData = null;
-                            preprocessedOptions.PostString = null;
-                            lazyurl = new LazyUri(redirectLocation);
-                            continue;
-                        }
-                    }
-
-                    page.OwnerDocument.DocumentNode.SetAttributeValue("requested-url", originalLazy.AbsoluteUri);
-
 #if DESKTOP
                     Caching.SaveCache(cachePath, result.CacheData);
 #endif
@@ -946,6 +958,7 @@ namespace Shaman
 #if !STANDALONE
                         timing.Complete();
 #endif
+                        preprocessedOptions.HtmlRetrieved?.Invoke(p, null, null);
                         return p;
                     }
                     catch (Exception) when (KeepRetryingFailedRequests)
@@ -986,7 +999,9 @@ namespace Shaman
 
             var metaParameters = ProcessMetaParameters(url, options) ?? new Dictionary<string, string>();
 
+#if !STANDALONE
             string siteIdentifier = null;
+#endif
 
             Credentials credentials = null;
 
@@ -1238,7 +1253,7 @@ namespace Shaman
 #endif
 
 
-        public static bool IsHostedOn(this Uri url, string baseHost)
+            public static bool IsHostedOn(this Uri url, string baseHost)
         {
 
             return IsHostedOn(url.Host, baseHost);

@@ -15,6 +15,7 @@ using HttpExtensionMethods = Shaman.ExtensionMethods;
 
 using System.Collections;
 using Shaman.Runtime;
+using Shaman.Dom;
 
 #if SMALL_LIB_AWDEE
 namespace Shaman
@@ -35,6 +36,8 @@ namespace Xamasoft
         public int? TimeoutSecondRetrialAfterError { get; set; }
 
         public TimeSpan WaitBefore { get; set; }
+
+        public Action<HtmlNode, Uri, Exception> HtmlRetrieved;
 
         private bool _allowRedirects = true;
         public bool AllowRedirects
