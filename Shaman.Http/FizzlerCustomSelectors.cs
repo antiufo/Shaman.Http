@@ -791,7 +791,6 @@ namespace Shaman.Runtime
                             var n = x as HtmlTextNode;
                             if (n == null) return false;
                             var found = n.Text;
-                            if (text == null) return IsNullOrWhiteSpace(found);
                             if (found.Length == text.Length) return found == text;
                             if (found.Length < text.Length) return false;
                             return found.Trim() == text;
@@ -1660,6 +1659,9 @@ namespace Shaman.Runtime
             });
 
 #if !STANDALONE
+
+
+
             Parser.RegisterCustomSelector<HtmlNode>("parse-date", () =>
             {
                 return nodes =>
@@ -1673,6 +1675,21 @@ namespace Shaman.Runtime
                         {
                             return new[] { WrapText(f, d.Value.ToString("yyyy-MM-dd HH:mm:ss")) };
                         }
+                    }
+                    return Enumerable.Empty<HtmlNode>();
+                };
+            });
+
+            Parser.RegisterCustomSelector<HtmlNode>("parse-number", () =>
+            {
+                return nodes =>
+                {
+                    var f = nodes.FirstOrDefault();
+                    var text = f?.GetText();
+                    if (text != null)
+                    {
+                        var d = decimal.Parse(text);
+                        return new[] { WrapText(f, d.ToString()) };
                     }
                     return Enumerable.Empty<HtmlNode>();
                 };
