@@ -15,6 +15,12 @@ namespace Shaman.Runtime
         {
         }
 
+
+        public DataTransferProgress(long transferredData, long? total, long dataPerSecond)
+            : this(new FileSize(transferredData), total != null ? (FileSize?)new FileSize(total.Value) : null, new FileSize(dataPerSecond), null)
+        {
+        }
+
         public DataTransferProgress(FileSize transferredData, FileSize? total, FileSize dataPerSecond, string description)
         {
             this.transferredData = transferredData;
