@@ -23,7 +23,9 @@ using HtmlNodeHashSet = System.Collections.Generic.HashSet<Shaman.Dom.HtmlNode>;
 #if !STANDALONE
 using HttpUtils = Shaman.Utils;
 using HttpExtensionMethods = Shaman.ExtensionMethods;
+#if !SALTARELLE
 using Shaman.Runtime.ReflectionExtensions;
+#endif
 #endif
 
 namespace Shaman.Runtime
@@ -880,6 +882,7 @@ namespace Shaman.Runtime
             });
 
 
+
             Parser.RegisterCustomSelector<HtmlNode, string>("split-text", separator =>
             {
 
@@ -889,7 +892,7 @@ namespace Shaman.Runtime
                     if (t != null)
                     {
                         if (lastTextSplitNode == t && lastTextSplitSeparator == separator) return lastTextSplitResult;
-                        var m = t.OwnerDocument.IsPlainText() ? ((HtmlTextNode)t.FirstChild)?.Text : t.GetText();
+                        var m = t.OwnerDocument.IsPlainText() ? (t.HasChildNodes ? ((HtmlTextNode)t.FirstChild).Text : null) : t.GetText();
                         if (m == null) return Enumerable.Empty<HtmlNode>();
                         string[] parts;
                         if (separator.Length == 1)
@@ -1611,11 +1614,19 @@ namespace Shaman.Runtime
                         var comment = (HtmlCommentNode)x.ChildNodes.FirstOrDefault(y => y.NodeType == HtmlNodeType.Comment);
                         if (comment == null) return null;
                         var doc = CreateDocument(x.OwnerDocument);
+#if SALTARELLE
+                        var c = comment.Comment;
+#else
                         var c = comment.Comment.AsValueString();
+#endif
                         c = c.Substring(4);
                         c = c.Substring(0, c.Length - 3);
                         c = c.Trim();
-                        return ReparseHtml(doc, c.ToClrString(), x.OwnerDocument);
+                        return ReparseHtml(doc, c
+#if !SALTARELLE
+                            .ToClrString()
+#endif
+                            , x.OwnerDocument);
                     }).WhereNotNull();
                 };
             });
@@ -1667,13 +1678,24 @@ namespace Shaman.Runtime
                 return nodes =>
                 {
                     var f = nodes.FirstOrDefault();
-                    var text = f?.GetText();
+                    var text = f != null ? f.GetText() : null;
                     if (text != null)
                     {
+#if SALTARELLE
+                        var d = DateTime.Parse(text);
+#else
                         var d = Conversions.TryParseDateTime(text, null, true, Utils.TryGetPageRetrievalDate(f.OwnerDocument));
+#endif
+
                         if (d != null)
                         {
-                            return new[] { WrapText(f, d.Value.ToString("yyyy-MM-dd HH:mm:ss")) };
+#if SALTARELLE
+                            var iso = (string)((dynamic)d).toISOString();
+                            var v = iso.ReplaceFirst("T", " ").Substr(0, 19);
+#else
+                            var v = d.Value.ToString("yyyy-MM-dd HH:mm:ss");
+#endif
+                            return new[] { WrapText(f, v) };
                         }
                     }
                     return Enumerable.Empty<HtmlNode>();
@@ -1685,10 +1707,14 @@ namespace Shaman.Runtime
                 return nodes =>
                 {
                     var f = nodes.FirstOrDefault();
-                    var text = f?.GetText();
+                    var text = f != null ? f.GetText() : null;
                     if (text != null)
                     {
+#if SALTARELLE
+                        var d = double.Parse(text);
+#else
                         var d = decimal.Parse(text);
+#endif
                         return new[] { WrapText(f, d.ToString()) };
                     }
                     return Enumerable.Empty<HtmlNode>();
@@ -1706,17 +1732,31 @@ namespace Shaman.Runtime
         {
             if (startToken[0] == '§')
             {
-                var match = Regex.Match(content, startToken.SubstringCached(1));
+                var regex = startToken.SubstringCached(1);
+#if SALTARELLE
+                var match = new Regex(regex).Exec(content);
+                if (match == null) return -1;
+                return match.Index + match[0].Length;
+#else
+                var match = Regex.Match(content, regex);
                 if (match == null || !match.Success) return -1;
                 return match.Index + match.Length;
+#endif
+
             }
             if (startToken[0] == '£')
             {
 
                 var regex = @"['""]" + startToken.SubstringCached(1) + @"['""]\s*:";
+#if SALTARELLE
+                var match = new Regex(regex).Exec(content);
+                if (match == null) return -1;
+                return match.Index + match[0].Length;
+#else
                 var match = Regex.Match(content, regex);
                 if (match == null || !match.Success) return -1;
                 return match.Index + match.Length;
+#endif
             }
             var idx = content.IndexOf(startToken);
             return idx != -1 ? idx + startToken.Length : -1;

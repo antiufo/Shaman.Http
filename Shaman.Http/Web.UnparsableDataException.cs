@@ -4,7 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Shaman.Dom;
-
+#if SALTARELLE
+using LazyUri = System.Uri;
+#endif
 #if SMALL_LIB_AWDEE
 namespace Shaman.Runtime
 #else

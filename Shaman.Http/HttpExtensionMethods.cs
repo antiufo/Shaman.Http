@@ -13,6 +13,7 @@ using System.Linq;
 using System.Reflection;
 #if SALTARELLE
 using System.Text.Saltarelle;
+using LazyUri = System.Uri;
 #else
 using System.Text;
 #if NATIVE_HTTP
@@ -2353,6 +2354,9 @@ namespace Shaman
 
         public static LazyUri GetLazyPageUrl(this HtmlDocument doc)
         {
+#if SALTARELLE
+            return doc.PageUrl;
+#else
             if (doc._pageUrlCustom != null) return (LazyUri)doc._pageUrlCustom;
             var m = doc.PageUrl;
             if (m != null)
@@ -2362,9 +2366,13 @@ namespace Shaman
                 return z;
             }
             return null;
+#endif
         }
         public static LazyUri GetLazyBaseUrl(this HtmlDocument doc)
         {
+#if SALTARELLE
+            return doc.BaseUrl;
+#else
             if (doc._baseUrlCustom != null) return (LazyUri)doc._baseUrlCustom;
             LazyUri _baseUrl = null;
             var b = doc.DocumentNode.GetAttributeValue("base-url");
@@ -2400,6 +2408,7 @@ namespace Shaman
             }
             doc._baseUrlCustom = _baseUrl;
             return _baseUrl;
+#endif
         }
 
         public static bool IsJson(this HtmlDocument document)
@@ -2416,7 +2425,9 @@ namespace Shaman
         public static void SetPageUrl(this HtmlDocument document, Uri url)
         {
             document.PageUrl = url;
+#if !SALTARELLE
             document._pageUrlCustom = null;
+#endif
         }
 #if !SALTARELLE
         public static void SetPageUrl(this HtmlDocument document, LazyUri url)
@@ -2653,11 +2664,13 @@ namespace Shaman
             if (old == null || old.Length >= mime.Length) extensionToMime[extension] = mime;
         }
 
+#if !SALTARELLE
         public static void Report(this IProgress<DataTransferProgress> progress, string status)
         {
             if (progress == null) return;
             progress.Report(new DataTransferProgress(status));
         }
+#endif
 
 
     }

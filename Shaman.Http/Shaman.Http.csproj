@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Description>HTTP and HTML processing library</Description>
-    <VersionPrefix>1.0.1.7</VersionPrefix>
+    <VersionPrefix>1.0.1.8</VersionPrefix>
     <Authors>Andrea Martinelli</Authors>
     <TargetFrameworks>net46;netstandard1.3</TargetFrameworks>
     <DefineConstants>$(DefineConstants);DESKTOP;STANDALONE;SMALL_LIB_AWDEE;SHAMAN_CORE;NATIVE_HTTP;SHAMAN;SKIP_FORMAT_FUNCTION</DefineConstants>

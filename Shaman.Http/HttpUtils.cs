@@ -4,6 +4,7 @@ using Shaman.Runtime;
 using Shaman.Dom;
 #if SALTARELLE
 using System.Text.Saltarelle;
+using LazyUri = System.Uri;
 #else
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -16,7 +17,9 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Globalization;
 using System.Reflection;
+#if !SALTARELLE
 using System.Net.Http;
+#endif
 
 namespace Shaman
 {
@@ -106,7 +109,13 @@ namespace Shaman
                     if (relative.IndexOf('/', 8) == -1) return relative + "/";
                     return relative;
                 }
-                var url = GetAbsoluteUrlInternal(baseUrl != null ? new LazyUri(baseUrl) : null, relative);
+                var url = GetAbsoluteUrlInternal(baseUrl != null ?
+#if SALTARELLE
+                    baseUrl
+#else
+                    new LazyUri(baseUrl)
+#endif
+                    : null, relative);
                 if (url == null) return null;
                 return url.AbsoluteUri;
             }
@@ -126,7 +135,7 @@ namespace Shaman
         IDictionary<string, string> metaParameters,
 #else
         IReadOnlyDictionary<string, string> metaParameters,
-#endif 
+#endif
         Credentials credentials)
         {
             var format = metaParameters.TryGetValue("$vary");
@@ -183,14 +192,14 @@ namespace Shaman
             url.AppendFragmentParameter("$vary", varyDaya);
             return url;
         }
-#endif
+
 
         internal static void EnsureInitialized()
         {
             if (HtmlDocument.CustomPageUrlTypeConverter == null)
                 HtmlDocument.CustomPageUrlTypeConverter = x => ((LazyUri)x).Url;
         }
-
+#endif
 
         internal static Uri GetAbsoluteUrlInternal(LazyUri baseUrl, string relative)
         {
@@ -212,8 +221,15 @@ namespace Shaman
 
             if (baseUrl == null) throw new ArgumentException("Cannot create an absolute Uri without a base Uri.");
 
-            if(!relative.StartsWith("#") && !relative.StartsWith("?")) return new Uri(baseUrl.PathConsistentUrl, relative);
+#if !SALTARELLE
+            // just an optimization
+            if (!relative.StartsWith("#") && !relative.StartsWith("?")) return new Uri(baseUrl.PathConsistentUrl, relative);
+            
             return new Uri(baseUrl.Url, relative);
+#else
+
+            return new Uri(baseUrl, relative);
+#endif
 
         }
 
@@ -1124,7 +1140,7 @@ namespace Shaman
             return node;
         }
 
-
+#if !SALTARELLE
 
         public static JToken ReadJsonToken(string source)
         {
@@ -1185,12 +1201,13 @@ namespace Shaman
             return (pos - i) % 2 == 0;
 
         }
-
+#endif
         public static bool IsHttp(Uri url)
         {
             return url.Scheme == UriSchemeHttp || url.Scheme == UriSchemeHttps;
         }
 
+#if !SALTARELLE
         public static IEnumerable<KeyValuePair<string, string>> ParseCookies(string cookies)
         {
             var c = cookies.AsValueString();
@@ -1240,6 +1257,7 @@ namespace Shaman
             }
             return code.ToString();
         }
+#endif
     }
 
 
