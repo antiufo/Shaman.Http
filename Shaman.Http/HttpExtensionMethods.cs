@@ -1021,6 +1021,12 @@ namespace Shaman
                 return page;
             }
 
+
+
+            // these fields will be nulled by redirects
+            var bakPostData = options.PostData;
+            var bakPostString = options.PostString;
+
 #if !STANDALONE
             var siteInfo = cookieContainer as SiteInfo;
             if (siteInfo != null)
@@ -1051,8 +1057,7 @@ namespace Shaman
                         var task = siteInfo.OnSessionCreatedAsync(newcookies);
                         if (task != null) await task;
                         credentials.LastLoginDate = DateTime.UtcNow;
-                        if (!ObjectManager.InMemory)
-                            ObjectManager.SaveCredentials(credentials);
+                        ObjectManager.SaveCredentials(credentials);
                     }
 
 
@@ -1091,8 +1096,7 @@ namespace Shaman
                 credentials.LastCookies = Utils.ParametersToString(options.CookiesList.Select(x => new KeyValuePair<string, string>(x.Name, x.Value)));
                 credentials.LastLoginDate = DateTime.UtcNow;
 
-                if (!ObjectManager.InMemory)
-                    ObjectManager.SaveCredentials(credentials);
+                ObjectManager.SaveCredentials(credentials);
 
 
 
@@ -1109,6 +1113,8 @@ namespace Shaman
 
 #endif
             {
+                options.PostData = bakPostData;
+                options.PostString = bakPostString;
                 try
                 {
                     var page = await GetHtmlNodeAsyncImpl(url, options, metaParameters, hasExtraOptions, credentials,
