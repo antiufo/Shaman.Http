@@ -99,6 +99,7 @@ namespace Shaman.Types
 
         protected WebFile(Uri url)
         {
+            if (url == null) throw new ArgumentNullException();
             this.Url = url;
         }
 
