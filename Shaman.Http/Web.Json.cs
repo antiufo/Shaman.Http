@@ -43,6 +43,8 @@ namespace Xamasoft
             if (str.IndexOf('\0', 0, Math.Min(str.Length, 40)) != -1) return str;
             string result;
 
+            str = str.TrimStart();
+
             result = TryCleanupJsonBlockingCode(str, "for(", "for ", ");");
             if (result != null) return result;
 
