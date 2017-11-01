@@ -19,7 +19,7 @@ namespace Shaman.Runtime
         // .link-next
         // .link-next§§preserve
         // .link-next (alwaysPreserveRemainingParameters)
-
+        // .link-next§§preserve§§a={z}
 
         public static bool UpdateNextLink(ref LazyUri modifiableUrl, HtmlNode node, string rule, bool isUnprefixedExtraParameters = false, bool alwaysPreserveRemainingParameters = false)
         {
@@ -27,22 +27,28 @@ namespace Shaman.Runtime
             bool preserve = alwaysPreserveRemainingParameters;
             if (!isUnprefixedExtraParameters)
             {
+                string additionalChanges = null;
                 if (!rule.StartsWith("§"))
                 {
-                    if (rule.EndsWith("§§preserve"))
+                    if (rule.Contains("§§preserve"))
                     {
                         preserve = true;
-                        rule = rule.Substring(0, rule.Length - "§§preserve".Length);
+                        rule = rule.Replace("§§preserve", string.Empty);
+                    }
+                    if (rule.Contains("§§"))
+                    {
+                        additionalChanges = rule.CaptureAfter("§§");
+                        rule = rule.CaptureBefore("§§");
                     }
                     var nextlink = node.FindSingle(rule);
-                    if (nextlink == null) { modifiableUrl = null; return anyVarying; }
+                    if (nextlink == null) { modifiableUrl = null; return false; }
 
                     var url = nextlink.TryGetLinkUrl();
                     if (url == null)
                     {
                         url = nextlink?.TryGetValue()?.AsUri();
                     }
-                    if (!HttpUtils.IsHttp(url)) { modifiableUrl = null; return anyVarying; }
+                    if (!HttpUtils.IsHttp(url)) { modifiableUrl = null; return false; }
                     if (!string.IsNullOrEmpty(url.Fragment))
                         url = url.GetLeftPart_UriPartial_Query().AsUri();
 
@@ -60,10 +66,13 @@ namespace Shaman.Runtime
                             }
                         }
                     }
-                    return anyVarying;
+                    anyVarying = true;
+                    if(additionalChanges == null)
+                        return anyVarying;
                 }
 
-                rule = rule.Substring(1);
+                if (additionalChanges != null) rule = additionalChanges;
+                else rule = rule.Substring(1);
             }
 
 
@@ -85,9 +94,25 @@ namespace Shaman.Runtime
                 }
                 if (val.StartsWith("{") && val.EndsWith("}"))
                 {
-                    var v = node.TryGetValue(val.Substring(1, val.Length - 2));
+                    val = val.Substring(1, val.Length - 2);
+                    var optional = false;
+                    var leaveUnchanged = false;
+                    if (val.StartsWith("optional:")) { optional = true; val = val.CaptureAfter(":"); }
+                    if (val.StartsWith("unchanged:")) { leaveUnchanged = true; val = val.CaptureAfter(":"); }
+                    var v = node.TryGetValue(val);
                     anyVarying = true;
-                    if (v == null) { modifiableUrl = null; return anyVarying; }
+                    if (v == null)
+                    {
+                        if (leaveUnchanged) continue;
+                        if (optional)
+                        {
+                            if (key.StartsWith("$")) modifiableUrl.RemoveFragmentParameter(key);
+                            else modifiableUrl.RemoveQueryParameter(key);
+                            continue;
+                        }
+                        modifiableUrl = null;
+                        return anyVarying;
+                    }
                     val = v;
                 }
 
