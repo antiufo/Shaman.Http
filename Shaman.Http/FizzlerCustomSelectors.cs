@@ -402,10 +402,10 @@ namespace Shaman.Runtime
             return lastConvertedJsonHtml;
         }
 
-        internal static HtmlNode WrapText(HtmlNode source, string text)
+        public static HtmlNode WrapText(HtmlNode source, string text)
         {
             if (string.IsNullOrEmpty(text)) return null;
-            var doc = CreateDocument(source.OwnerDocument);
+            var doc = CreateDocument(source != null ? source.OwnerDocument : null);
             var el = doc.CreateElement("fizzler-node-group");
             el.AppendTextNode(text);
             return el;
@@ -964,6 +964,38 @@ namespace Shaman.Runtime
                     });
 
                 };
+            });
+
+
+
+            Parser.RegisterCustomSelector<HtmlNode, string, string>("link-matches-rules", (host, rules) =>
+            {
+#if SALTARELLE
+                throw new Exception("Not supported in JS version of fizzler: ':link-matches-rules'.");
+#else
+                var matcher = UrlRuleMatcher.GetMatcher(rules.SplitFast(','), new Uri("http://" + host + "/"), true);
+                return nodes =>
+                {
+                    return nodes.Where(x =>
+                    {
+                        Uri link;
+                        try
+                        {
+                            link = x.TryGetLinkUrl();
+                        }
+                        catch (Exception)
+                        {
+                            return false;
+                        }
+
+                        if (link == null || (link.Scheme != HttpUtils.UriSchemeHttp && link.Scheme != HttpUtils.UriSchemeHttps)) return false;
+
+                        //if (!link.IsHostedOn(host)) return false;
+                        return matcher(link, false) == true;
+                    });
+
+                };
+#endif
             });
 
 
@@ -1747,7 +1779,7 @@ namespace Shaman.Runtime
             if (startToken[0] == '£')
             {
 
-                var regex = @"['""]" + startToken.SubstringCached(1) + @"['""]\s*:";
+                var regex = @"['""]?" + startToken.SubstringCached(1) + @"['""]?\s*:";
 #if SALTARELLE
                 var match = new Regex(regex).Exec(content);
                 if (match == null) return -1;
