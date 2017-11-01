@@ -88,6 +88,30 @@ namespace Shaman
             }
         }
 
+        public static Uri GetInlineElementBackground(HtmlNode node)
+        {
+            var style = node.Style;
+            if (style == null) return null;
+            var image = style.TryCaptureBetween("url(", ")");
+            if (image == null) return null;
+            image = image.Trim();
+            if (string.IsNullOrEmpty(image)) return null;
+            if (image[0] == '"' || image[0] == '\'') image = image.Substring(1, image.Length - 2);
+            image = image
+                  .Replace(@"\3a ", ":")
+                  .Replace(@"\3A ", ":")
+                  .Replace(@"\3d ", "=")
+                  .Replace(@"\3D ", "=")
+                  .Replace(@"\3f ", "?")
+                  .Replace(@"\3F ", "?")
+                  .Replace(@"\26 ", "&")
+                  .Replace(@"\2f ", "/")
+                  .Replace(@"\2F ", "/")
+                  .Replace(@"\25 ", "%");
+
+            return GetAbsoluteUri(node.OwnerDocument.GetLazyBaseUrl(), image);
+        }
+
 #endif
 
         public static string GetAbsoluteUriAsString(Uri baseUrl, string relative)
@@ -296,7 +320,7 @@ namespace Shaman
             return false;
         }
 
-        internal static string GetSuggestedFileName(Uri Url, string contentDispositionFileName, string contentTypeExtension)
+        internal static string GetSuggestedFileName(Uri url, string contentDispositionFileName, string contentTypeExtension)
         {
             const string FileNameRegex = @"/?([^/]+\.[^/\.]{1,8})/?$";
 
@@ -309,7 +333,7 @@ namespace Shaman
 
             if (name == null)
             {
-                name = Url.LocalPath.TryCapture(FileNameRegex);
+                name = url.LocalPath.TryCapture(FileNameRegex);
                 if (name != null)
                 {
                     try
@@ -328,7 +352,7 @@ namespace Shaman
             }
 
             if (name == null)
-                name = Url.GetQueryParameters().Select(x => x.Value.TryCapture(FileNameRegex)).FirstOrDefault(x => x != null);
+                name = url.GetQueryParameters().Select(x => x.Value.TryCapture(FileNameRegex)).FirstOrDefault(x => x != null);
 
             if (name == null)
                 return null;
