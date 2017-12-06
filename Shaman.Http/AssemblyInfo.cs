@@ -2,5 +2,4 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-[assembly: AssemblyVersion("1.0.0.0")]
 [assembly: InternalsVisibleTo("Shaman.Scraping, PublicKey=0024000004800000940000000602000000240000525341310004000001000100b9e8ba2d4c5fa64e37fde8ce1bd5dd7ab18af1a363e8e3dd24711371a6fa9b38c5d26fb0b1814939cd217aeafaa54c5b306917e686ae33c9dc3f95285c2d9de128c40a4042d162a22a41ff383cc7fde7278a221f5a7d81f197d93ebdf36c03caa553758a1203cf1c7cb0805a090254827fe412cfaf0569572ed00c72cb0055b2")]
