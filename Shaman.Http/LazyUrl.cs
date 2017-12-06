@@ -56,7 +56,6 @@ namespace Shaman
                     queryParameters = Clone(this.queryParameters),
                     unparsedUrl = this.unparsedUrl,
                     url = this.url,
-                    parsedUnparsedOutOfSync = this.parsedUnparsedOutOfSync,
                 };
             }
         }
@@ -82,11 +81,15 @@ namespace Shaman
         {
             if (url.Length > Configuration_FastParsingThreshold)
             {
+                if (url.Contains('\n'))
+                {
+                    url = url.Replace("\n", "").Replace("\r", "").Replace("\t", "").Replace(" ", "");
+                }
+
                 var idx = url.IndexOfAny(Separators);
                 if (idx != -1 && url.Length - idx > Configuration_FastParsingMinSavings)
                 {
                     this.url = new Uri(url.Substring(0, idx));
-                    this.parsedUnparsedOutOfSync = true;
                     this.unparsedUrl = url;
                     return;
                 }
@@ -123,7 +126,15 @@ namespace Shaman
             get
             {
                 var u = GetPathAndQueryConsistentUrlIfCached();
-                return u ?? Url;
+                if (u != null) return u;
+
+                var k = AbsoluteUri;
+                if (parsedUnparsedOutOfSync)
+                {
+                    var idx = unparsedUrl.IndexOf('#');
+                    if (idx != -1) return unparsedUrl.Substring(0, idx).AsUri();
+                }
+                return this.Url;
             }
         }
 
@@ -152,12 +163,11 @@ namespace Shaman
                     if (s != null)
                     {
                         url = s.AsUri();
-                        parsedUnparsedOutOfSync = false;
+                        unparsedUrl = null;
                     }
                     else if (unparsedUrl != null)
                     {
                         url = unparsedUrl.AsUri();
-                        parsedUnparsedOutOfSync = false;
                         unparsedUrl = null;
                     }
                     return url;
@@ -175,7 +185,6 @@ namespace Shaman
                     var s = GetUrlStringIfNew();
                     if (s != null)
                     {
-                        parsedUnparsedOutOfSync = true;
                         unparsedUrl = s;
                         return s;
                     }
@@ -197,7 +206,7 @@ namespace Shaman
             return null;
         }
 
-        private bool parsedUnparsedOutOfSync;
+        private bool parsedUnparsedOutOfSync => unparsedUrl != null;
         internal string GetUrlStringIfNew()
         {
             NakedStringBuilder sb = null;
@@ -301,7 +310,6 @@ namespace Shaman
                 }
 
 
-                queryParameters = url.GetQueryParameters().ToList();
                 nextQueryParameterToAdd = queryParameters.Count;
             }
 
@@ -341,7 +349,11 @@ namespace Shaman
             if (idx != -1)
             {
                 queryParameters.RemoveAt(idx);
-                url = url.GetLeftPart(UriPartial.Path).AsUri();
+                if (!string.IsNullOrEmpty(url.Query) || !string.IsNullOrEmpty(url.Fragment))
+                {
+                    url = url.GetLeftPart(UriPartial.Path).AsUri();
+                }
+                unparsedUrl = null;
                 nextQueryParameterToAdd = 0;
                 nextFragmentParameterToAdd = 0;
             }
@@ -354,11 +366,21 @@ namespace Shaman
             if (idx != -1)
             {
                 fragmentParameters.RemoveAt(idx);
-                url = url.GetLeftPart_UriPartial_Query().AsUri();
+                if (!string.IsNullOrEmpty(url.Fragment))
+                {
+                    url = url.GetLeftPart_UriPartial_Query().AsUri();
+                }
+                unparsedUrl = null;
                 nextFragmentParameterToAdd = 0;
             }
         }
 
+
+        public string GetLeftPart_Path()
+        {
+            var u = PathConsistentUrl;
+            return u.GetLeftPart(UriPartial.Path);
+        }
 
         public string Authority
         {
