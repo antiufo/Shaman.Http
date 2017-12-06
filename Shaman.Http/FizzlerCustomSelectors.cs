@@ -407,7 +407,21 @@ namespace Shaman.Runtime
             if (string.IsNullOrEmpty(text)) return null;
             var doc = CreateDocument(source != null ? source.OwnerDocument : null);
             var el = doc.CreateElement("fizzler-node-group");
-            el.AppendTextNode(text);
+            if (text.Contains("\n"))
+            {
+                var parts = text.SplitFast('\n');
+                var first = true;
+                foreach (var item in parts)
+                {
+                    if (!first) el.AppendChild(el.OwnerDocument.CreateElement("br"));
+                    el.AppendTextNode(item);
+                    first = false;
+                }
+            }
+            else
+            {
+                el.AppendTextNode(text);
+            }
             return el;
         }
 
@@ -706,6 +720,19 @@ namespace Shaman.Runtime
                     return nodes.Where(x => x.GetText() == text);
                 };
             });
+            Parser.RegisterCustomSelector<HtmlNode, string>("text-contains", (text) =>
+            {
+                if (text == string.Empty) text = null;
+                return nodes =>
+                {
+                    return nodes.Where(x => 
+                    {
+                        var t = x.GetText();
+                        if (t == null) return false;
+                        return t.Contains(text);
+                    });
+                };
+            });
             Parser.RegisterCustomSelector<HtmlNode, Selector<HtmlNode>, Selector<HtmlNode>>("either", (alt1, alt2) =>
             {
                 return nodes =>
@@ -776,6 +803,15 @@ namespace Shaman.Runtime
                         if (found.Length < text.Length) return false;
                         return found.Trim() == text;
                     });
+                };
+            });
+
+            Parser.RegisterCustomSelector<HtmlNode>("first-level-text", () =>
+            {
+
+                return nodes =>
+                {
+                    return nodes.Select(x => WrapText(x, x.GetFirstLevelText())).WhereNotNull();
                 };
             });
 
@@ -1143,6 +1179,8 @@ namespace Shaman.Runtime
 
                 };
             });
+
+         
 
             Parser.RegisterCustomSelector<HtmlNode>("link-url", () =>
             {
@@ -1625,14 +1663,7 @@ namespace Shaman.Runtime
                     return nodes.Select(x =>
                     {
                         var excluded = condition(new[] { x }).ToList();
-                        if (excluded.Count == 0) return x;
-                        var torebuild = new HtmlNodeHashSet(excluded);
-                        stack.Clear();
-                        stack.Add(x);
-                        AddNodesToRemove(stack, torebuild);
-                        stack.Clear();
-
-                        return CloneWithout(x, torebuild, excluded);
+                        return CopyWithoutNodes(x, excluded, stack);
                     });
                 };
             });
@@ -1701,6 +1732,52 @@ namespace Shaman.Runtime
                 };
             });
 
+
+            Parser.RegisterCustomSelector<HtmlNode>("as-boolean-if-exists", () =>
+            {
+                return nodes =>
+                {
+                    var first = nodes.FirstOrDefault();
+                    return first != null ? new[] { WrapText(first, "1") } : Enumerable.Empty<HtmlNode>();
+                };
+            });
+
+            Parser.RegisterCustomSelector<HtmlNode>("as-boolean-if-has-text", () =>
+            {
+                return nodes =>
+                {
+                    var first = nodes.FirstOrDefault();
+                    return first != null && first.TryGetValue() != null ? new[] { WrapText(first, "1") } : Enumerable.Empty<HtmlNode>();
+                };
+            });
+            Parser.RegisterCustomSelector<HtmlNode, string>("as-boolean-if-contains", token =>
+            {
+                return nodes =>
+                {
+                    var first = nodes.FirstOrDefault();
+                    if (first != null)
+                    {
+                        var v = first.TryGetValue();
+                        if (v != null && v.Contains(token)) return new[] { WrapText(first, "1") };
+                    }
+                    return Enumerable.Empty<HtmlNode>();
+                };
+            });
+
+            Parser.RegisterCustomSelector<HtmlNode, string>("as-boolean-if-has-value-that-doesnt-contain", token =>
+            {
+                return nodes =>
+                {
+                    var first = nodes.FirstOrDefault();
+                    if (first != null)
+                    {
+                        var v = first.TryGetValue();
+                        if (v != null && !v.Contains(token)) return new[] { WrapText(first, "1") };
+                    }
+                    return Enumerable.Empty<HtmlNode>();
+                };
+            });
+
 #if !STANDALONE
 
 
@@ -1742,12 +1819,18 @@ namespace Shaman.Runtime
                     var text = f != null ? f.GetText() : null;
                     if (text != null)
                     {
+                        try
+                        {
 #if SALTARELLE
                         var d = double.Parse(text);
 #else
-                        var d = decimal.Parse(text);
+                            var d = decimal.Parse(text);
 #endif
-                        return new[] { WrapText(f, d.ToString()) };
+                            return new[] { WrapText(f, d.ToString()) };
+                        }
+                        catch
+                        {
+                        }
                     }
                     return Enumerable.Empty<HtmlNode>();
                 };
@@ -1757,8 +1840,19 @@ namespace Shaman.Runtime
 
         }
 
-
-
+        public static HtmlNode CopyWithoutNodes(HtmlNode x, List<HtmlNode> excluded, List<HtmlNode> stack = null)
+        {
+            if (excluded.Count == 0) return x;
+            if (stack == null) stack = new List<HtmlNode>();
+            stack.Clear();
+            var torebuild = new HtmlNodeHashSet(excluded);
+            stack.Clear();
+            stack.Add(x);
+            AddNodesToRemove(stack, torebuild);
+            stack.Clear();
+            var z = CloneWithout(x, torebuild, excluded);
+            return z;
+        }
 
         private static int SkipJsonToken(string content, string startToken)
         {
@@ -1779,7 +1873,7 @@ namespace Shaman.Runtime
             if (startToken[0] == '£')
             {
 
-                var regex = @"['""]?" + startToken.SubstringCached(1) + @"['""]?\s*:";
+                var regex = @"['""\b]" + startToken.SubstringCached(1) + @"['""]?\s*:";
 #if SALTARELLE
                 var match = new Regex(regex).Exec(content);
                 if (match == null) return -1;
@@ -1843,7 +1937,6 @@ namespace Shaman.Runtime
                                 torebuild.Add(item);
                             }
                         }
-                        return;
                     }
                     else
                     {
