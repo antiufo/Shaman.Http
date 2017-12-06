@@ -20,7 +20,7 @@ using System.Reflection;
 #if !SALTARELLE
 using System.Net.Http;
 #endif
-#if !STANDLONE
+#if !STANDALONE
 using HttpUtils = Shaman.Utils;
 #endif
 
