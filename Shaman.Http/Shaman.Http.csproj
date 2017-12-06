@@ -19,7 +19,7 @@
   <ItemGroup />
   <ItemGroup>
     <PackageReference Include="Shaman.Fizzler" Version="1.0.1.11" />
-    <PackageReference Include="Shaman.Dom" Version="1.0.1.21" />
+    <PackageReference Include="Shaman.Dom" Version="1.0.1.24" />
     <PackageReference Include="Newtonsoft.Json" Version="9.0.1" />
     <PackageReference Include="Shaman.ValueString" Version="1.0.2.32" />
     <PackageReference Include="Shaman.Configuration.Metadata" Version="1.0.1.2" />
