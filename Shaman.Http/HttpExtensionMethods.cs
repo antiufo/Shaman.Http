@@ -1657,14 +1657,14 @@ namespace Shaman
                 var href = node.GetAttributeValue("href");
                 if (href != null)
                 {
-                    return HttpUtils.GetAbsoluteUrlInternal(baseUrl, href);
+                    return HttpUtils.GetAbsoluteUrlInternal(baseUrl, href, dontThrow: true);
                 }
 
                 var src = node.GetAttributeValue("src");
                 if (src != null)
                 {
                     if (node.TagName == "img") return TryGetImageUrl(node);
-                    return HttpUtils.GetAbsoluteUrlInternal(baseUrl, src);
+                    return HttpUtils.GetAbsoluteUrlInternal(baseUrl, src, dontThrow: true);
                 }
                 if (node.OwnerDocument.IsJson() || node.OwnerDocument.IsXml())
                 {
@@ -2001,6 +2001,9 @@ namespace Shaman
 #if !SKIP_FORMAT_FUNCTION
             if (selector.StartsWith(":code")) return FindWithCode(context, selector);
 #endif
+#if !SKIP_FIND_XPATH
+            if (selector.StartsWith(":xpath")) return FindWithXPath(context, selector);
+#endif
             return context.QuerySelectorAll(selector);
         }
 
@@ -2011,8 +2014,34 @@ namespace Shaman
 #if !SKIP_FORMAT_FUNCTION
             if (selector.StartsWith(":code")) return FindWithCode(context, selector).FirstOrDefault();
 #endif
+#if !SKIP_FIND_XPATH
+            if (selector.StartsWith(":xpath")) return FindWithXPath(context, selector).FirstOrDefault();
+#endif
             return context.QuerySelector(selector);
         }
+
+
+#if !SKIP_FIND_XPATH
+        private static IEnumerable<HtmlNode> FindWithXPath(HtmlNode context, string selector)
+        {
+            const int len = 7; // ":xpath(".Length;
+            var sel = selector.Substring(len, selector.Length - len - 1);
+            IEnumerable<HtmlNode> Enumerate()
+            {
+                var iter = new HtmlNodeNavigator(context).Select(sel);
+                while (iter.MoveNext())
+                {
+                    var n = (HtmlNodeNavigator)iter.Current;
+                    var z = n.CurrentNode;
+
+                    yield return z;
+                }
+                yield break;
+            };
+            
+            return Enumerate();
+        }
+#endif
 
 #if !SKIP_FORMAT_FUNCTION
         [StaticFieldCategory(StaticFieldCategory.Cache)]

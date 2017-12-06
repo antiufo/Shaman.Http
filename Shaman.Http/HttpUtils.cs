@@ -20,6 +20,10 @@ using System.Reflection;
 #if !SALTARELLE
 using System.Net.Http;
 #endif
+#if !STANDLONE
+using HttpUtils = Shaman.Utils;
+#endif
+
 
 namespace Shaman
 {
@@ -225,7 +229,7 @@ namespace Shaman
         }
 #endif
 
-        internal static Uri GetAbsoluteUrlInternal(LazyUri baseUrl, string relative)
+        internal static Uri GetAbsoluteUrlInternal(LazyUri baseUrl, string relative, bool dontThrow = false)
         {
 
             if (relative.StartsWith("http:") || relative.StartsWith("https:"))
@@ -243,7 +247,11 @@ namespace Shaman
             if (firstColon != -1 && (firstSlash == -1 || firstColon < firstSlash) && (firstQuestionMark == -1 || firstColon < firstQuestionMark))
                 return new Uri(relative);
 
-            if (baseUrl == null) throw new ArgumentException("Cannot create an absolute Uri without a base Uri.");
+            if (baseUrl == null)
+            {
+                if (dontThrow) return null;
+                throw new ArgumentException("Cannot create an absolute Uri without a base Uri.");
+            }
 
 #if !SALTARELLE
             // just an optimization
@@ -1261,7 +1269,7 @@ namespace Shaman
                 if (CustomHttpErrorNames == null)
                 {
                     var z = new string[30];
-                    foreach (var field in typeof(Utils).GetFields(System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.Static))
+                    foreach (var field in typeof(HttpUtils).GetFields(System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.Static))
                     {
                         if (field.Name.StartsWith("Error_"))
                         {
