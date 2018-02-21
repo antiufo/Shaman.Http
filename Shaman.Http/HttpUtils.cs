@@ -16,9 +16,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Globalization;
-using System.Reflection;
 #if !SALTARELLE
-using System.Net.Http;
 #endif
 #if !STANDALONE
 using HttpUtils = Shaman.Utils;
@@ -50,6 +48,11 @@ namespace Shaman
         }
 
 #if !SALTARELLE
+
+
+
+        
+        
 
 
         public static LazyUri GetAbsoluteLazyUri(LazyUri baseUrl, string relative)
@@ -221,11 +224,25 @@ namespace Shaman
             return url;
         }
 
-
+        private static bool _initialized;
         internal static void EnsureInitialized()
         {
-            if (HtmlDocument.CustomPageUrlTypeConverter == null)
-                HtmlDocument.CustomPageUrlTypeConverter = x => ((LazyUri)x).Url;
+            if (_initialized) return;
+            HtmlDocument.CustomPageUrlTypeConverter = x => ((LazyUri)x).Url;
+
+            var proxy = Configuration_Proxy;
+            if (proxy == null)
+            {
+                proxy = Environment.GetEnvironmentVariable("http_proxy");
+            }
+
+            if (!string.IsNullOrEmpty(proxy))
+            {
+                WebRequest.DefaultWebProxy = new WebProxy(proxy);
+            }
+
+            _initialized = true;
+
         }
 #endif
 
@@ -914,12 +931,17 @@ namespace Shaman
         }
 
 
+
+        [Configuration(CommandLineAlias = "proxy")]
+        public static string Configuration_Proxy;
+
 #if STANDALONE
         static HttpUtils()
         {
             FizzlerCustomSelectors.RegisterAll();
         }
 #endif
+
 
 
         const string a4jPrefix = "A4J.AJAX.Submit(";
