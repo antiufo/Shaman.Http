@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using Shaman.Runtime;
 using System.Threading;
 using Newtonsoft.Json;
+using System.Globalization;
 #if !STANDALONE
 using HttpExtensionMethods = Shaman.ExtensionMethods;
 using HttpUtils = Shaman.Utils;
@@ -104,7 +105,7 @@ namespace Shaman.Types
         }
 
 
-        internal void SaveResponseInfo(HttpResponseMessage partialDownload, bool continueDownload)
+        internal void SaveResponseInfo(HttpResponseMessage partialDownload, bool? continueDownload)
         {
             if (partialDownload != null)
             {
@@ -115,7 +116,22 @@ namespace Shaman.Types
 #endif
                 if (len != null) Size = new FileSize(len.Value);
 
-// HACK: ignore content disposition in .net 35
+#if !WEBCLIENT
+                var lastModified = partialDownload.Content.Headers.LastModified?.UtcDateTime;
+                if (partialDownload.Headers.TryGetValues("Memento-Datetime", out var k))
+                {
+                    if (DateTimeOffset.TryParse(k.First(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var m))
+                    {
+                        if (lastModified == null || m.UtcDateTime < lastModified)
+                            lastModified = m.UtcDateTime;
+                    }
+                }
+
+                if (lastModified != null)
+                    LastModified = lastModified;
+#endif
+
+                // HACK: ignore content disposition in .net 35
 #if !NET35
                 var contentDisposition = partialDownload.Content.Headers.ContentDisposition;
                 if (contentDisposition != null) contentDispositionFileName = contentDisposition.FileName;
@@ -129,14 +145,17 @@ namespace Shaman.Types
 #endif
                 );
 
-                if (continueDownload && (manager == null || !manager.IsAlive))
+                if (continueDownload != null)
                 {
-                    this.partialDownload = partialDownload;
-                    manager = new MediaStreamManager(GetResponseAsync, true);
-                }
-                else
-                {
-                    partialDownload.AbortAndDispose();
+                    if (continueDownload == true && (manager == null || !manager.IsAlive))
+                    {
+                        this.partialDownload = partialDownload;
+                        manager = new MediaStreamManager(GetResponseAsync, true);
+                    }
+                    else
+                    {
+                        partialDownload.AbortAndDispose();
+                    }
                 }
                 OnChanged();
             }
@@ -307,7 +326,11 @@ namespace Shaman.Types
             var url = new LazyUri(this.Url);
             HttpExtensionMethods.ProcessMetaParameters(url, options);
             if (startPosition != 0) options.AddHeader("Range", "bytes=" + startPosition + "-");
-            return await HttpExtensionMethods.GetResponseAsync(url, options);
+            var response = await HttpExtensionMethods.GetResponseAsync(url, options);
+
+            SaveResponseInfo(response, null);
+
+            return response;
             //return (await HttpExtensionMethods.SendAsync(url, options, null)).Response;
         }
 
@@ -366,11 +389,10 @@ namespace Shaman.Types
                         var response = await m.Manager.GetResponseAsync();
                         if (response != null)
                         {
-                            var lm = response.Content.Headers.LastModified;
-                            if(lm != null)
+                            if(this.LastModified != null)
                             {
                                 fs.Dispose();
-                                File.SetLastWriteTimeUtc(temp, lm.Value.UtcDateTime);
+                                File.SetLastWriteTimeUtc(temp, this.LastModified.Value);
                             }   
                         }
                     }
