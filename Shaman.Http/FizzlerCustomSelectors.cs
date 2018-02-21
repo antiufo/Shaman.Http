@@ -1,4 +1,4 @@
-using Fizzler;
+﻿using Fizzler;
 using Shaman.Dom;
 #if !SALTARELLE
 using Newtonsoft.Json;
@@ -623,6 +623,27 @@ namespace Shaman.Runtime
                     }).Where(x => x != null);
                 };
             });
+
+            Parser.RegisterCustomSelector<HtmlNode>("resolve-url", () =>
+            {
+#if SALTARELLE
+                throw new Exception("Not supported in JS version of fizzler: ':resolve-url'.");
+#elif STANDALONE
+                throw new Exception("Not supported in the standalone version of fizzler: ':resolve-url'.");
+#else
+                return nodes =>
+                {
+                    return nodes.Select(x =>
+                    {
+                        var z = x.TryGetValue();
+                        if (z == null) return null;
+                        return WrapText(x, HtmlCleaner.ConvertUrlBestEffort(z.AsUri()).AbsoluteUri);
+                    }).Where(x => x != null);
+                };
+#endif
+            });
+
+
 
             Parser.RegisterCustomSelector<HtmlNode>("make-absolute", () =>
             {
@@ -1516,7 +1537,7 @@ namespace Shaman.Runtime
                             dummy.ChildNodes.Add(m);
                             m = m.PreviousSibling;
                         }
-
+                        
                         var q = condition(new[] { dummy }).FirstOrDefault();
                         if (q != null) return new[] { q };
                     }
@@ -1732,7 +1753,29 @@ namespace Shaman.Runtime
                 };
 
             });
-            
+
+
+            Parser.RegisterCustomSelector<HtmlNode>("outer-html", () =>
+            {
+                return nodes =>
+                {
+                    return nodes.Select(x =>
+                    {
+                        return WrapText(x, x.OuterHtml);
+                    });
+                };
+            });
+            Parser.RegisterCustomSelector<HtmlNode>("inner-html", () =>
+            {
+                return nodes =>
+                {
+                    return nodes.Select(x =>
+                    {
+                        return WrapText(x, x.OuterHtml);
+                    });
+                };
+            });
+
 
             Parser.RegisterCustomSelector<HtmlNode, Selector<HtmlNode>>("without-subnodes", condition =>
             {
