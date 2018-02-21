@@ -23,6 +23,39 @@ namespace Shaman.Runtime
 
         public static bool UpdateNextLink(ref LazyUri modifiableUrl, HtmlNode node, string rule, bool isUnprefixedExtraParameters = false, bool alwaysPreserveRemainingParameters = false)
         {
+            if (string.IsNullOrEmpty(rule))
+            {
+                //var ap = AutoPagerize.GetRules(modifiableUrl.PathAndQueryConsistentUrl);
+
+#if STANDALONE
+                modifiableUrl = null;
+                return false;
+#else
+                var next = AutoPagerize.GetNextPageUrl(node);
+
+                if (next == null || next.GetLeftPart_UriPartial_Query() == node.OwnerDocument.PageUrl.GetLeftPart_UriPartial_Query())
+                {
+                    modifiableUrl = null;
+                    return false;
+                }
+
+                var defaults = modifiableUrl.QueryParameters.Concat(modifiableUrl.FragmentParameters).ToList();
+                modifiableUrl = new LazyUri(next);
+                foreach (var kv in defaults)
+                {
+                    if (kv.Key.StartsWith("$json-query-") && modifiableUrl.GetQueryParameter(kv.Key.CaptureBetween("-query-", "-")) != null) continue;
+                    if (modifiableUrl.GetQueryParameter(kv.Key) == null && modifiableUrl.GetFragmentParameter(kv.Key) == null)
+                    {
+                        if (kv.Key.StartsWith("$")) modifiableUrl.AppendFragmentParameter(kv.Key, kv.Value);
+                        else modifiableUrl.AppendQueryParameter(kv.Key, kv.Value);
+                    }
+                }
+                
+
+                return true;
+#endif
+            }
+
             var anyVarying = false;
             bool preserve = alwaysPreserveRemainingParameters;
             if (!isUnprefixedExtraParameters)
