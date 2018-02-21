@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using Shaman.Runtime;
 using System;
 using System.Collections.Generic;
@@ -68,6 +68,7 @@ namespace Shaman
 
         public LazyUri(Uri url)
         {
+            if (url == null) throw new ArgumentNullException();
             this.url = url;
         }
 
@@ -79,6 +80,7 @@ namespace Shaman
         private static char[] Separators = new[] { '#', '?' };
         public LazyUri(string url)
         {
+            if (url == null) throw new ArgumentNullException();
             if (url.Length > Configuration_FastParsingThreshold)
             {
                 if (url.Contains('\n'))
