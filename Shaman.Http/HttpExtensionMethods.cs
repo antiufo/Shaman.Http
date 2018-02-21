@@ -191,7 +191,7 @@ namespace Shaman
                 }
                 catch (AggregateException ex) when (ex.InnerException != null)
                 {
-                    throw ex.InnerException;
+                    ex.Rethrow();
                 }
 
                 using (var response = info.Response)
