@@ -1472,6 +1472,57 @@ namespace Shaman.Runtime
                 };
             });
 
+            Parser.RegisterCustomSelector<HtmlNode>("heading-hierarchy", () =>
+            {
+                return nodes =>
+                {
+                    var first = nodes.FirstOrDefault();
+                    if (first == null) return Enumerable.Empty<HtmlNode>();
+                    var hierarchy = new List<HtmlNode>();
+
+                    var m = first;
+                    var maxDepth = 10;
+                    while (m != null)
+                    {
+                        if (m.IsHeading())
+                        {
+                            var level = m.TagName[1] - '0';
+                            if (level < maxDepth)
+                            {
+                                hierarchy.Add(m);
+                                maxDepth = level;
+                            }
+                        }
+                        var s = m.PreviousSibling;
+                        m = s ?? m.ParentNode;
+                    }
+                    hierarchy.Reverse();
+                    return hierarchy;
+                };
+            });
+
+
+
+            Parser.RegisterCustomSelector<HtmlNode, Selector<HtmlNode>>("preceding-sibling", condition =>
+            {
+                return nodes =>
+                {
+                    foreach (var node in nodes)
+                    {
+                        var dummy = node.OwnerDocument.CreateElement("fizzler-node-group");
+                        var m = node.PreviousSibling;
+                        while (m != null)
+                        {
+                            dummy.ChildNodes.Add(m);
+                            m = m.PreviousSibling;
+                        }
+
+                        var q = condition(new[] { dummy }).FirstOrDefault();
+                        if (q != null) return new[] { q };
+                    }
+                    return Enumerable.Empty<HtmlNode>();
+                };
+            });
 
             Parser.RegisterCustomSelector<HtmlNode, int>("take", (count) =>
             {
