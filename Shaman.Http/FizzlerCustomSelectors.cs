@@ -1,4 +1,4 @@
-using Fizzler;
+﻿using Fizzler;
 using Shaman.Dom;
 #if !SALTARELLE
 using Newtonsoft.Json;
@@ -92,7 +92,7 @@ namespace Shaman.Runtime
         private static dynamic JSON5 = Script.Eval("JSON5");
 #endif
 
-        internal static HtmlNode JsonToHtml(string source, int startIndex, HtmlDocument parentDocument)
+        public static HtmlNode JsonToHtml(string source, int startIndex, HtmlDocument parentDocument)
         {
             if (object.ReferenceEquals(source, lastConvertedJsonString) && object.ReferenceEquals(parentDocument, lastConvertedJsonParentDocument) && lastConvertedJsonIndex == startIndex)
                 return lastConvertedJsonHtml;
