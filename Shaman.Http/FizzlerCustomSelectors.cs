@@ -1929,7 +1929,21 @@ namespace Shaman.Runtime
                 };
             });
 
+
+
+            Parser.RegisterCustomSelector<HtmlNode, string>("join-text", (delimiter) =>
+            {
+                return nodes =>
+                {
+                    var f = string.Join(delimiter, nodes.Select(x => x.GetText()).Where(x => x != null)
+#if NET35
+                        .ToArray()
 #endif
+                    );
+                    if (string.IsNullOrEmpty(f)) return Enumerable.Empty<HtmlNode>();
+                    return new[] { WrapText(null, f) };
+                };
+            });
 
         }
 
