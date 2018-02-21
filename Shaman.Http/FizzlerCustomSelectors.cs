@@ -1,4 +1,4 @@
-﻿using Fizzler;
+using Fizzler;
 using Shaman.Dom;
 #if !SALTARELLE
 using Newtonsoft.Json;
@@ -1780,6 +1780,18 @@ namespace Shaman.Runtime
 
 #if !STANDALONE
 
+
+
+            Parser.RegisterCustomSelector<HtmlNode>("autopagerize", () =>
+            {
+                return nodes =>
+                {
+                    var f = nodes.FirstOrDefault();
+                    var m = f != null ? AutoPagerize.GetBody(f) : null;
+                    return m != null ? m : Enumerable.Empty<HtmlNode>();
+
+                };
+            });
 
 
             Parser.RegisterCustomSelector<HtmlNode>("parse-date", () =>
