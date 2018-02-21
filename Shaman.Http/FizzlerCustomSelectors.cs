@@ -1,4 +1,4 @@
-﻿using Fizzler;
+using Fizzler;
 using Shaman.Dom;
 #if !SALTARELLE
 using Newtonsoft.Json;
@@ -677,6 +677,34 @@ namespace Shaman.Runtime
 
                         var idx = p.IndexOf(before);
                         return idx != -1 ? WrapText(x, p.Substring(idx + before.Length)) : null;
+                    }).Where(x => x != null);
+                };
+            });
+
+
+
+            Parser.RegisterCustomSelector<HtmlNode>("to-lower", () =>
+            {
+                return nodes =>
+                {
+                    return nodes.Select(x =>
+                    {
+                        var p = x.TryGetValue();
+                        if (p == null) return null;
+                        return WrapText(x, p.ToLowerInvariant());
+                    }).Where(x => x != null);
+                };
+            });
+
+            Parser.RegisterCustomSelector<HtmlNode>("to-upper", () =>
+            {
+                return nodes =>
+                {
+                    return nodes.Select(x =>
+                    {
+                        var p = x.TryGetValue();
+                        if (p == null) return null;
+                        return WrapText(x, p.ToUpperInvariant());
                     }).Where(x => x != null);
                 };
             });
