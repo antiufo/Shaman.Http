@@ -1871,7 +1871,7 @@ namespace Shaman.Runtime
 
                 };
             });
-
+#endif
 
             Parser.RegisterCustomSelector<HtmlNode>("parse-date", () =>
             {
@@ -1881,8 +1881,8 @@ namespace Shaman.Runtime
                     var text = f != null ? f.GetText() : null;
                     if (text != null)
                     {
-#if SALTARELLE
-                        var d = DateTime.Parse(text);
+#if SALTARELLE || STANDALONE
+                        DateTime? d = DateTime.Parse(text);
 #else
                         var d = Conversions.TryParseDateTime(text, null, true, Utils.TryGetPageRetrievalDate(f.OwnerDocument));
 #endif
@@ -1901,6 +1901,8 @@ namespace Shaman.Runtime
                     return Enumerable.Empty<HtmlNode>();
                 };
             });
+
+       
 
             Parser.RegisterCustomSelector<HtmlNode>("parse-number", () =>
             {
