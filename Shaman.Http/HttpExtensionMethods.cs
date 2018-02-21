@@ -1,4 +1,4 @@
-﻿using Fizzler.Systems.HtmlAgilityPack;
+using Fizzler.Systems.HtmlAgilityPack;
 #if !SALTARELLE
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -387,9 +387,11 @@ namespace Shaman
 
                 if (contentType != null && contentType.StartsWith("image/")) throw new NotSupportedResponseException(contentType, url);
 
-                var readfunc = new Func<Task>(
-#if !NET35
-                    async
+                
+#if NET35
+                var readfunc = new Action(
+#else
+                var readfunc = new Func<Task>(async
 #endif
                      () =>
                 {
@@ -603,8 +605,12 @@ namespace Shaman
                     }
                 });
 
+#if NET35
+                await TaskEx.Run(readfunc);
+#else
                 if (synchronous) readfunc().AssumeCompleted();
                 else await TaskEx.Run(readfunc);
+#endif
 
                 // if (redirectLocation == null) html = (await response.Content.ReadAsStringAsync()).AsHtmlDocumentNode();
 
@@ -714,6 +720,12 @@ namespace Shaman
 #if DESKTOP
                     try
                     {
+
+                        if (preprocessedOptions.CookiesList != null)
+                        {
+                            metaParameters = metaParameters.Concat(preprocessedOptions.CookiesList.Select(x => new KeyValuePair<string, string>("$cookie-" + x.Name, x.Value))).ToDictionary();
+                        }
+
                         var r = await HttpUtils.GetJavascriptProcessedPageAsync(originalLazy, lazyurl, metaParameters);
                         if (preprocessedOptions != null) preprocessedOptions.PageExecutionResults = r;
                         node = r.GetHtmlNode();
